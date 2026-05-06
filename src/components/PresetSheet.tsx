@@ -77,10 +77,12 @@ export function PresetSheet({
           </button>
         </div>
 
-        <div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-6 sm:grid-cols-3 md:grid-cols-4">
-          {presets.map((p) => (
-            <PresetCard key={p.id} preset={p} selected={selectedId === p.id} onSelect={onSelect} />
-          ))}
+        <div className="flex-1 overflow-y-auto px-5 pb-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {presets.map((p) => (
+              <PresetCard key={p.id} preset={p} selected={selectedId === p.id} onSelect={onSelect} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
