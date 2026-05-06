@@ -1,0 +1,102 @@
+// dripv2 — Seedance 2.0 preset video MVP
+// Prisma schema. Default datasource: SQLite for local dev.
+// For production, point DATABASE_URL at Postgres and switch `provider` to "postgresql".
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Preset configuration. Editable without touching UI.
+// ---------------------------------------------------------------------------
+model Preset {
+  id              String   @id
+  title           String
+  subtitle        String?
+  thumbnailUrl    String?
+  promptTemplate  String
+  aspectRatio     String   @default("9:16")
+  durationSec     Int      @default(5)
+  resolution      String   @default("720p")
+  generateAudio   Boolean  @default(false)
+  motionNotes     String?
+  modelId         String   @default("dreamina-seedance-2-0-260128")
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  jobs            GenerationJob[]
+}
+
+// ---------------------------------------------------------------------------
+// Source image uploaded by the user. We always control its URL.
+// ---------------------------------------------------------------------------
+model SourceImage {
+  id          String   @id @default(cuid())
+  storageKey  String
+  publicUrl   String
+  mimeType    String
+  width       Int?
+  height      Int?
+  bytes       Int
+  createdAt   DateTime @default(now())
+
+  jobs        GenerationJob[]
+}
+
+// ---------------------------------------------------------------------------
+// Generated video produced by Seedance and copied to our storage.
+// ---------------------------------------------------------------------------
+model ResultVideo {
+  id            String   @id @default(cuid())
+  storageKey    String
+  publicUrl     String
+  durationSec   Int?
+  width         Int?
+  height        Int?
+  lastFrameUrl  String?
+  bytes         Int?
+  createdAt     DateTime @default(now())
+
+  job           GenerationJob?
+}
+
+// ---------------------------------------------------------------------------
+// Generation job — the central state machine.
+// ---------------------------------------------------------------------------
+model GenerationJob {
+  id                String        @id @default(cuid())
+  sessionId         String
+  presetId          String
+  sourceImageId     String
+  status            String        @default("queued")
+  provider          String        @default("byteplus_seedance_2")
+  providerModelId   String
+  providerTaskId    String?
+  providerStatus    String?
+  requestHash       String
+  resultVideoId     String?       @unique
+  errorCode         String?
+  errorReason       String?
+  attempts          Int           @default(0)
+  nextPollAt        DateTime?
+  pollStartedAt     DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  preset            Preset        @relation(fields: [presetId], references: [id])
+  sourceImage       SourceImage   @relation(fields: [sourceImageId], references: [id])
+  resultVideo       ResultVideo?  @relation(fields: [resultVideoId], references: [id])
+
+  @@index([sessionId, createdAt])
+  @@index([status, nextPollAt])
+  @@unique([sessionId, requestHash])
+}
