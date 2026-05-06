@@ -30,7 +30,6 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
-          "var(--font-sans)",
           "Inter",
           "ui-sans-serif",
           "system-ui",
@@ -40,11 +39,17 @@ const config: Config = {
           "sans-serif",
         ],
         display: [
-          "var(--font-display)",
           "Inter",
           "ui-sans-serif",
           "system-ui",
           "sans-serif",
+        ],
+        serif: [
+          "Instrument Serif",
+          "Iowan Old Style",
+          "Apple Garamond",
+          "Georgia",
+          "serif",
         ],
       },
       letterSpacing: {

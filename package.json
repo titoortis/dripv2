@@ -23,6 +23,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.654.0",
     "@aws-sdk/s3-request-presigner": "^3.654.0",
+    "@fontsource/instrument-serif": "^5.2.8",
+    "@fontsource/inter": "^5.2.8",
     "@prisma/client": "^5.22.0",
     "@telegram-apps/sdk-react": "^2.0.20",
     "clsx": "^2.1.1",
