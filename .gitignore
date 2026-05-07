@@ -48,3 +48,4 @@ _plans/
 # misc
 coverage
 *.tsbuildinfo
+.vercel
