@@ -9,6 +9,8 @@ import {
   type MotionValue,
 } from "framer-motion";
 
+import { PromptComposer } from "@/components/landing/PromptComposer";
+
 const HERO_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
 
@@ -37,7 +39,7 @@ function HeroSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative h-screen overflow-hidden"
+      className="relative min-h-screen overflow-hidden pb-24 md:pb-32"
     >
       <Navbar />
 
@@ -82,21 +84,9 @@ function HeroSection() {
           No prompts. Just trending VFX presets.
         </motion.p>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-        >
-          <Link href="/create">
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.98 }}
-              className="rounded-full bg-white px-8 py-3.5 text-base font-medium text-black"
-            >
-              Create video
-            </motion.button>
-          </Link>
-        </motion.div>
+        <div className="mt-2 w-full px-2">
+          <PromptComposer />
+        </div>
       </motion.div>
 
       <DashboardArea dashboardY={dashboardY} />
