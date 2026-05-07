@@ -116,7 +116,54 @@ async function callOpenAI(userMessage: string): Promise<string> {
       body: JSON.stringify({
         model,
         temperature: 0.7,
-        response_format: { type: "json_object" },
+        // Strict json_schema mode: forces the model to return exactly this
+        // shape, no missing keys, no extras. Supported by gpt-4o, gpt-4o-mini.
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "seedance_prompt",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["analysis", "prompt", "settings"],
+              properties: {
+                analysis: { type: "string" },
+                prompt: { type: "string" },
+                settings: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "aspect_ratio",
+                    "duration_seconds",
+                    "shot_count",
+                    "input_mode",
+                  ],
+                  properties: {
+                    aspect_ratio: {
+                      type: "string",
+                      enum: ["9:16", "16:9", "1:1", "4:3", "3:4"],
+                    },
+                    duration_seconds: {
+                      type: "integer",
+                      minimum: 4,
+                      maximum: 15,
+                    },
+                    shot_count: { type: "integer", minimum: 1, maximum: 8 },
+                    input_mode: {
+                      type: "string",
+                      enum: [
+                        "text-to-video",
+                        "image-to-video",
+                        "multi-image",
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         messages: [
           { role: "system", content: SEEDANCE_SYSTEM_PROMPT },
           { role: "user", content: userMessage },

@@ -39,13 +39,13 @@ function HeroSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative min-h-screen overflow-hidden pb-24 md:pb-32"
+      className="relative min-h-screen overflow-hidden pb-12 md:pb-16"
     >
       <Navbar />
 
       <motion.div
         style={{ y: heroY, opacity: heroOpacity }}
-        className="relative z-10 mt-16 flex flex-col items-center px-4 text-center md:mt-20"
+        className="relative z-10 mt-8 flex flex-col items-center px-4 text-center md:mt-10"
       >
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -76,7 +76,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-8 text-lg font-normal leading-6 opacity-90"
+          className="mb-5 text-lg font-normal leading-6 opacity-90"
           style={{ color: "hsl(var(--hero-subtitle))" }}
         >
           drip turns one photo into a vertical short with one tap.
@@ -84,7 +84,7 @@ function HeroSection() {
           No prompts. Just trending VFX presets.
         </motion.p>
 
-        <div className="mt-2 w-full px-2">
+        <div className="w-full px-2">
           <PromptComposer />
         </div>
       </motion.div>
@@ -189,7 +189,7 @@ function DashboardArea({ dashboardY }: { dashboardY: MotionValue<number> }) {
       initial={{ opacity: 0, y: 40 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay: 0.4 }}
-      className="relative mt-12"
+      className="relative mt-6 md:mt-8"
       style={{
         width: "100vw",
         marginLeft: "calc(-50vw + 50%)",

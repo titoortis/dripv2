@@ -84,32 +84,25 @@ export function PromptComposer() {
     >
       {!result && (
         <form onSubmit={onSubmit} className="w-full">
-          <div className="liquid-glass relative rounded-2xl">
+          <div className="liquid-glass relative flex items-end gap-2 rounded-2xl px-3 py-2.5">
             <textarea
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
               disabled={loading}
-              rows={3}
+              rows={1}
               maxLength={2000}
-              placeholder="Опиши идею: о ком ролик, где, что происходит, как снимаем — и я соберу промпт под Seedance 2."
-              className="block w-full resize-none rounded-2xl bg-transparent px-5 py-4 text-base text-white placeholder:text-[hsl(0_0%_55%)] focus:outline-none disabled:opacity-60"
+              placeholder="Опиши идею ролика — соберу под Seedance 2."
+              className="block max-h-[160px] min-h-[40px] w-full resize-none bg-transparent px-2 py-1.5 text-base leading-6 text-white placeholder:text-[hsl(0_0%_55%)] focus:outline-none disabled:opacity-60"
             />
-            <div className="flex items-center justify-between gap-3 px-5 pb-4">
-              <span className="text-[11px] uppercase tracking-[0.14em] text-[hsl(0_0%_55%)]">
-                {idea.length === 0
-                  ? "Turn idea → Seedance prompt"
-                  : `${idea.length} / 2000`}
-              </span>
-              <motion.button
-                type="submit"
-                disabled={loading || idea.trim().length < 3}
-                whileHover={!loading ? { scale: 1.02 } : undefined}
-                whileTap={!loading ? { scale: 0.98 } : undefined}
-                className="rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition disabled:opacity-50"
-              >
-                {loading ? "Crafting…" : "Сделать промпт"}
-              </motion.button>
-            </div>
+            <motion.button
+              type="submit"
+              disabled={loading || idea.trim().length < 3}
+              whileHover={!loading ? { scale: 1.02 } : undefined}
+              whileTap={!loading ? { scale: 0.98 } : undefined}
+              className="shrink-0 rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition disabled:opacity-50"
+            >
+              {loading ? "…" : "Сделать промпт"}
+            </motion.button>
           </div>
           {error && (
             <p className="mt-3 text-sm text-red-300/90" role="alert">
