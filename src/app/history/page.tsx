@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { ComingSoon, isMarketingMode } from "@/components/ComingSoon";
 
 type Item = {
   id: string;
@@ -16,6 +17,18 @@ type Item = {
 };
 
 export default function HistoryPage() {
+  if (isMarketingMode()) {
+    return (
+      <ComingSoon
+        title="Your gallery is on the way"
+        subtitle="Once the generation pipeline is live, every video you create lands here with one tap to share."
+      />
+    );
+  }
+  return <HistoryPageInner />;
+}
+
+function HistoryPageInner() {
   const [items, setItems] = useState<Item[] | null>(null);
 
   useEffect(() => {

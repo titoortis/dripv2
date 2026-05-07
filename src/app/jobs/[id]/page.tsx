@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { ComingSoon, isMarketingMode } from "@/components/ComingSoon";
 import { StatusLine } from "@/components/StatusLine";
 
 type JobView = {
@@ -28,6 +29,18 @@ type JobView = {
 const TERMINAL = new Set(["completed", "failed", "cancelled", "expired"]);
 
 export default function JobPage({ params }: { params: { id: string } }) {
+  if (isMarketingMode()) {
+    return (
+      <ComingSoon
+        title="Renders are warming up"
+        subtitle="The job pipeline is still cooling. Hit the home page for the launch teaser, generation lands with the next drop."
+      />
+    );
+  }
+  return <JobPageInner params={params} />;
+}
+
+function JobPageInner({ params }: { params: { id: string } }) {
   const [job, setJob] = useState<JobView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const stoppedRef = useRef(false);

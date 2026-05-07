@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { Button } from "@/components/Button";
 
+// Public, mp4, autoplay-friendly. Override with NEXT_PUBLIC_HERO_VIDEO_URL.
+// The Cloudinary URL originally proposed (cloud_name=dfonotyfb) returned
+// HTTP 401 "cloud_name is disabled", so the default is a working CloudFront
+// asset of the same brief.
 const DEFAULT_HERO_VIDEO_URL =
-  "https://res.cloudinary.com/dfonotyfb/video/upload/v1775585556/dds3_1_rqhg7x.mp4";
+  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
 
 export default function Home() {
   const heroVideoUrl = process.env.NEXT_PUBLIC_HERO_VIDEO_URL ?? DEFAULT_HERO_VIDEO_URL;

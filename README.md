@@ -80,6 +80,44 @@ See [`.env.example`](./.env.example) for the full list.
 | `POLL_MIN_INTERVAL_MS`, `POLL_MAX_INTERVAL_MS` | no (defaulted) | Per-job poll backoff window |
 | `JOB_WALL_CLOCK_TIMEOUT_MS` | no (defaulted) | Max time a job can sit in non-terminal state |
 | `DISABLE_POLLER` | no | Set `true` on serverless deploys; use `/api/internal/poll` cron instead |
+| `NEXT_PUBLIC_HERO_VIDEO_URL` | no | Override the landing hero background mp4 |
+| `NEXT_PUBLIC_LAUNCH_MODE` | no | `marketing` renders the landing only (Coming soon for `/create`, `/jobs/[id]`, `/history`); `full` (default) enables the generation pipeline |
+
+## Deploying to Vercel
+
+The landing is fully static and runs on Vercel out of the box. The generation pipeline depends on Postgres and S3 (Vercel's runtime is read-only and ephemeral), so it ships in two phases.
+
+### Phase 1 — marketing-only (no DB, no storage required)
+
+Vercel project settings:
+
+- **Framework preset**: Next.js (auto-detected)
+- **Install command**: `pnpm install --frozen-lockfile`
+- **Build command**: `pnpm build`
+
+Environment variables (Production + Preview):
+
+```
+NEXT_PUBLIC_LAUNCH_MODE=marketing
+NEXT_PUBLIC_HERO_VIDEO_URL=https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4
+DISABLE_POLLER=true
+DATABASE_URL=file:/tmp/dev.db
+STORAGE_DRIVER=local
+STORAGE_LOCAL_DIR=/tmp/uploads
+APP_PUBLIC_BASE_URL=https://<your-vercel-domain>
+```
+
+In this mode the landing page is fully live; `/create`, `/jobs/[id]`, and `/history` render a "Coming soon" placeholder and never touch the DB or storage. `DATABASE_URL=file:/tmp/dev.db` is only there to satisfy Prisma client init — no queries are ever made.
+
+### Phase 2 — full pipeline (Postgres + S3 + ARK_API_KEY)
+
+When you are ready to flip generation on:
+
+1. Switch the Prisma datasource provider from `sqlite` to `postgresql` in `prisma/schema.prisma`, set `DATABASE_URL` to a Postgres URL (Neon, Vercel Postgres, Supabase), and run `pnpm prisma migrate deploy`.
+2. Provision an S3-compatible bucket (Cloudflare R2 recommended) and set `STORAGE_DRIVER=s3` plus the `S3_*` variables.
+3. Add `ARK_API_KEY` from the BytePlus console.
+4. Remove `NEXT_PUBLIC_LAUNCH_MODE` (or set it to `full`).
+5. Wire `POST /api/internal/poll` to a Vercel Cron (every ~10s) since `DISABLE_POLLER=true` on Vercel.
 
 ## Provider integration
 
