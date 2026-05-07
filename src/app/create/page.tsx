@@ -5,11 +5,24 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { ComingSoon, isMarketingMode } from "@/components/ComingSoon";
 import { PresetCard, type PresetSummary } from "@/components/PresetCard";
 import { PresetSheet } from "@/components/PresetSheet";
 import { UploadPad, type UploadedSource } from "@/components/UploadPad";
 
 export default function CreatePage() {
+  if (isMarketingMode()) {
+    return (
+      <ComingSoon
+        title="Cinematic generation lands soon"
+        subtitle="Upload, presets, and Seedance 2.0 generation are queued behind the rollout. The waitlist opens with the next drop."
+      />
+    );
+  }
+  return <CreatePageInner />;
+}
+
+function CreatePageInner() {
   const router = useRouter();
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(true);
