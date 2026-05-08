@@ -96,8 +96,22 @@ model Preset {
   thumbnailUrl   String?
   promptTemplate String
   aspectRatio    String   @default("9:16")
+  // `durationSec` and `resolution` remain the *baseline* render settings —
+  // what `/api/jobs` POST always sends to the provider today. PR 5 adds the
+  // capability fields below ("what could this preset render at?") as
+  // forward-friendly seams for the PR 6 quality picker. Submit-time still
+  // ignores them; nothing routes through the picker yet.
   durationSec    Int      @default(5)
   resolution     String   @default("720p")
+  // CSV of supported render settings, sorted ascending. SQLite has no
+  // first-class array type, so we use comma-separated strings; `/api/presets`
+  // parses them back into typed arrays for clients.
+  //   supportedResolutions ⊆ {"480p", "720p", "1080p"}
+  //   supportedDurations   ⊆ {5, 10, 15}
+  // Defaults intentionally narrow to the baseline so existing rows stay
+  // truthful after a `prisma db push` without re-seeding.
+  supportedResolutions String   @default("720p")
+  supportedDurations   String   @default("5")
   generateAudio  Boolean  @default(false)
   motionNotes    String?
   modelId        String   @default("dreamina-seedance-2-0-260128")

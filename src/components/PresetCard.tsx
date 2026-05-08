@@ -10,6 +10,11 @@ export type PresetSummary = {
   aspectRatio: string;
   durationSec: number;
   resolution: string;
+  // PR 5 capability seam. Always includes at least the baseline `resolution`
+  // and `durationSec`; PR 6 quality picker reads these to enumerate options.
+  // Display-only today.
+  supportedResolutions: string[];
+  supportedDurations: number[];
 };
 
 export function PresetCard({

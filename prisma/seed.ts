@@ -1,7 +1,25 @@
 import { PrismaClient } from "@prisma/client";
-import { PRESETS, SEEDANCE_DEFAULT_MODEL } from "../src/lib/server/presets-source";
+import {
+  PRESETS,
+  SEEDANCE_DEFAULT_MODEL,
+  type PresetSeed,
+} from "../src/lib/server/presets-source";
 
 const prisma = new PrismaClient();
+
+// CSV serialization for SQLite. The DB column is `String`; clients receive a
+// parsed array via `/api/presets`. Falls back to the preset's baseline render
+// setting when the seed entry doesn't declare a capability set.
+function resolutionsCsv(p: PresetSeed): string {
+  const set = p.supportedResolutions ?? [p.resolution];
+  return Array.from(new Set(set)).sort().join(",");
+}
+function durationsCsv(p: PresetSeed): string {
+  const set = p.supportedDurations ?? [p.durationSec];
+  return Array.from(new Set(set))
+    .sort((a, b) => a - b)
+    .join(",");
+}
 
 async function main() {
   const ids = new Set<string>();
@@ -19,6 +37,8 @@ async function main() {
         aspectRatio: p.aspectRatio,
         durationSec: p.durationSec,
         resolution: p.resolution,
+        supportedResolutions: resolutionsCsv(p),
+        supportedDurations: durationsCsv(p),
         generateAudio: p.generateAudio ?? false,
         motionNotes: p.motionNotes ?? null,
         modelId: p.modelId ?? SEEDANCE_DEFAULT_MODEL,
@@ -33,6 +53,8 @@ async function main() {
         aspectRatio: p.aspectRatio,
         durationSec: p.durationSec,
         resolution: p.resolution,
+        supportedResolutions: resolutionsCsv(p),
+        supportedDurations: durationsCsv(p),
         generateAudio: p.generateAudio ?? false,
         motionNotes: p.motionNotes ?? null,
         modelId: p.modelId ?? SEEDANCE_DEFAULT_MODEL,
