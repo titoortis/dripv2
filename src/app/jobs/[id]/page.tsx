@@ -14,6 +14,12 @@ type JobView = {
   providerStatus?: string | null;
   errorCode?: string | null;
   errorReason?: string | null;
+  // PR 6: chosen render quality + debited cost. These come straight off the
+  // job row, NOT from the preset baseline, so what users see on the result /
+  // processing screens matches what we actually rendered and charged.
+  resolution: string;
+  durationSec: number;
+  creditsCost: number;
   preset: {
     id: string;
     title: string;
@@ -130,9 +136,9 @@ function ProcessingView({ job }: { job: JobView }) {
         </div>
 
         <div className="mt-4 flex items-center gap-2">
-          <Chip>{job.preset.durationSec}s</Chip>
+          <Chip>{job.durationSec}s</Chip>
           <Chip>{job.preset.aspectRatio}</Chip>
-          <Chip>{job.preset.resolution}</Chip>
+          <Chip>{job.resolution}</Chip>
         </div>
 
         <div className="mt-5">
@@ -171,9 +177,9 @@ function ResultView({ job }: { job: JobView }) {
         </div>
 
         <div className="mt-4 flex items-center gap-2">
-          <Chip>{job.preset.durationSec}s</Chip>
+          <Chip>{job.durationSec}s</Chip>
           <Chip>{job.preset.aspectRatio}</Chip>
-          <Chip>{job.preset.resolution}</Chip>
+          <Chip>{job.resolution}</Chip>
           <span className="ml-auto truncate text-[12px] text-ink-300">{job.preset.title}</span>
         </div>
       </div>

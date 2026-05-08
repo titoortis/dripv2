@@ -29,6 +29,11 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       providerStatus: job.providerStatus,
       errorCode: job.errorCode,
       errorReason: job.errorReason,
+      // PR 6: chosen quality + debited cost surfaced from the job row so the
+      // UI shows what we *actually* rendered/charged, not the preset baseline.
+      resolution: job.resolution,
+      durationSec: job.durationSec,
+      creditsCost: job.creditsCost,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
       preset: job.preset,
