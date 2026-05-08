@@ -83,15 +83,35 @@ export type SeedanceClient = {
   hasCredentials(): boolean;
 };
 
+/**
+ * Defensive normalization of `ARK_API_KEY` so a paste-with-prefix or trailing
+ * whitespace doesn't silently produce HTTP 401 "API key format is incorrect".
+ * BytePlus expects the bare key in `Authorization: Bearer <key>`; if the user
+ * pasted `Bearer xxx`, our code would otherwise emit `Bearer Bearer xxx`.
+ */
+function normalizeApiKey(raw: string): string {
+  let k = raw.trim();
+  // Strip wrapping quotes if any.
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1).trim();
+  }
+  // Strip leading "Bearer " (case-insensitive) if the user pasted the full header value.
+  if (/^bearer\s+/i.test(k)) {
+    k = k.replace(/^bearer\s+/i, "").trim();
+  }
+  return k;
+}
+
 function authHeaders(): Record<string, string> {
-  const key = env().ARK_API_KEY;
-  if (!key) {
+  const raw = env().ARK_API_KEY;
+  if (!raw) {
     throw new SeedanceError(
       "ARK_API_KEY is not configured. Provider calls are blocked.",
       0,
       "missing_api_key",
     );
   }
+  const key = normalizeApiKey(raw);
   return {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
