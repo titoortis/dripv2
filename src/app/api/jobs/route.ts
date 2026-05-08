@@ -8,13 +8,26 @@ import { logEvent } from "@/lib/server/logger";
 import { clientIp, consume } from "@/lib/server/rate-limit";
 import { getOrCreateUser } from "@/lib/server/users";
 import { ensureWallet } from "@/lib/server/wallet";
+import { computeCost, type Duration, type Resolution } from "@/lib/pricing";
+import { isComboVerified } from "@/lib/server/jobs/verified-combos";
+import {
+  parseSupportedDurations,
+  parseSupportedResolutions,
+} from "@/lib/server/preset-capabilities";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// PR 6: `resolution` / `durationSec` are optional on the wire so any pre-PR-6
+// client (which only sends `presetId` + `sourceImageId`) still works — the
+// server falls back to the preset baseline. New clients always send the user's
+// picker selection. Both paths flow through the same gate + pricing path
+// below; the API never trusts the client to compute cost.
 const CreateBody = z.object({
   presetId: z.string().min(1),
   sourceImageId: z.string().min(1),
+  resolution: z.enum(["480p", "720p", "1080p"]).optional(),
+  durationSec: z.union([z.literal(5), z.literal(10), z.literal(15)]).optional(),
 });
 
 // 6 jobs per minute per session, with bursts up to 3.
@@ -68,13 +81,73 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "source image not found" }, { status: 404 });
   }
 
+  // PR 6 quality resolution + gate. Three checks, in order, every miss is a
+  // 400 with a discriminator the UI can show:
+  //   1. vocabulary check (handled by zod above; falls through to the preset
+  //      baseline when omitted);
+  //   2. preset-supported check — the chosen combo must appear in the preset's
+  //      `supportedResolutions` × `supportedDurations` set;
+  //   3. provider-verified check — the chosen combo must be in
+  //      `PROVIDER_VERIFIED_COMBOS` (PR 4 today proved 720p × 5s only).
+  const baselineRes = preset.resolution as Resolution;
+  const baselineDur = preset.durationSec as Duration;
+  const chosenResolution: Resolution = parsed.data.resolution ?? baselineRes;
+  const chosenDuration: Duration = parsed.data.durationSec ?? baselineDur;
+  const supportedResolutions = parseSupportedResolutions(preset.supportedResolutions, baselineRes);
+  const supportedDurations = parseSupportedDurations(preset.supportedDurations, baselineDur);
+  if (
+    !supportedResolutions.includes(chosenResolution) ||
+    !supportedDurations.includes(chosenDuration)
+  ) {
+    return NextResponse.json(
+      {
+        error: "quality_not_supported_by_preset",
+        supportedResolutions,
+        supportedDurations,
+      },
+      { status: 400 },
+    );
+  }
+  if (!isComboVerified({ resolution: chosenResolution, durationSec: chosenDuration })) {
+    logEvent("quality_gate_blocked", {
+      route: "POST /api/jobs",
+      session_id: sessionId,
+      user_id: user.id,
+      preset_id: preset.id,
+      resolution: chosenResolution,
+      duration_sec: chosenDuration,
+    });
+    return NextResponse.json(
+      {
+        error: "verification_pending",
+        message:
+          "This quality is not live-verified yet. Pick a different one or wait for the next drop.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Pricing-at-submit. Single source of truth shared with the UI's live cost
+  // preview — both call sites import `computeCost` from `@/lib/pricing`.
+  // Display-must-match-charged: the number we debit below is exactly the
+  // number the picker showed.
+  const creditsCost = computeCost({
+    resolution: chosenResolution,
+    durationSec: chosenDuration,
+  });
+
+  // Hash includes the *chosen* resolution / durationSec, not the preset
+  // baseline. Two submits at different qualities for the same preset+image
+  // hash differently — they're different jobs, debited at their own prices.
+  // Pre-PR-6 jobs that ran at the preset baseline still hash identically
+  // because the chosen values default to the baseline when omitted.
   const hash = requestHash({
     presetId: preset.id,
     sourceImageId: image.id,
     modelId: preset.modelId,
     ratio: preset.aspectRatio,
-    resolution: preset.resolution,
-    durationSec: preset.durationSec,
+    resolution: chosenResolution,
+    durationSec: chosenDuration,
     generateAudio: preset.generateAudio,
     promptTemplate: preset.promptTemplate,
   });
@@ -92,8 +165,12 @@ export async function POST(req: Request) {
   // We do NOT start the runner inside the tx so the row-locks stay short.
   const result = await prisma.$transaction(async (tx) => {
     const wallet = await tx.entitlementWallet.findUnique({ where: { userId: user.id } });
-    if (!wallet || wallet.balance < 1) {
-      return { kind: "no_credits" as const, balance: wallet?.balance ?? 0 };
+    if (!wallet || wallet.balance < creditsCost) {
+      return {
+        kind: "no_credits" as const,
+        balance: wallet?.balance ?? 0,
+        required: creditsCost,
+      };
     }
     const created = await tx.generationJob.create({
       data: {
@@ -104,22 +181,25 @@ export async function POST(req: Request) {
         providerModelId: preset.modelId,
         requestHash: hash,
         status: "queued",
+        resolution: chosenResolution,
+        durationSec: chosenDuration,
+        creditsCost,
       },
     });
     await tx.entitlementWallet.update({
       where: { userId: user.id },
-      data: { balance: { decrement: 1 } },
+      data: { balance: { decrement: creditsCost } },
     });
     await tx.jobLedgerEntry.create({
       data: {
         userId: user.id,
         type: "debit",
-        amount: 1,
+        amount: creditsCost,
         reason: "generation",
         jobId: created.id,
       },
     });
-    return { kind: "ok" as const, job: created, remaining: wallet.balance - 1 };
+    return { kind: "ok" as const, job: created, remaining: wallet.balance - creditsCost };
   });
 
   if (result.kind === "no_credits") {
@@ -128,15 +208,16 @@ export async function POST(req: Request) {
       user_id: user.id,
       session_id: sessionId,
       balance: result.balance,
+      required: result.required,
     });
     return NextResponse.json(
-      { error: "no_credits", balance: result.balance },
+      { error: "no_credits", balance: result.balance, required: result.required },
       { status: 402 },
     );
   }
 
   return NextResponse.json(
-    { job: serialize(result.job), balance: result.remaining },
+    { job: serialize(result.job), balance: result.remaining, creditsCost },
     { status: 201 },
   );
 }
@@ -156,10 +237,21 @@ export async function GET() {
   return NextResponse.json({ jobs: jobs.map(serializeFull) });
 }
 
-function serialize(job: { id: string; status: string; createdAt: Date; updatedAt: Date }) {
+function serialize(job: {
+  id: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  resolution: string;
+  durationSec: number;
+  creditsCost: number;
+}) {
   return {
     id: job.id,
     status: job.status,
+    resolution: job.resolution,
+    durationSec: job.durationSec,
+    creditsCost: job.creditsCost,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   };
@@ -178,6 +270,12 @@ function serializeFull(job: FullJob) {
     providerStatus: job.providerStatus,
     errorCode: job.errorCode,
     errorReason: job.errorReason,
+    // PR 6: chosen quality + debited cost are pulled from the job row, not
+    // the preset, so what the user sees on `/jobs/[id]` and `/history`
+    // matches what we actually charged.
+    resolution: job.resolution,
+    durationSec: job.durationSec,
+    creditsCost: job.creditsCost,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
     preset: job.preset,

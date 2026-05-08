@@ -4,6 +4,11 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { PresetCard, type PresetSummary } from "./PresetCard";
 
+// PR 6: the PR 5 "Quality picker arrives next" legend is removed because the
+// picker now ships on `/create`. Resolutions / durations are surfaced through
+// the picker buttons themselves; advertising them in the sheet header would
+// be redundant.
+
 export function PresetSheet({
   open,
   presets,
@@ -65,7 +70,6 @@ export function PresetSheet({
             <p className="mt-1 text-[13px] text-ink-300">
               Apply cinematic looks, effects, and scene styles in seconds.
             </p>
-            <CapabilityLegend presets={presets} />
           </div>
           <button
             onClick={onClose}
@@ -88,43 +92,4 @@ export function PresetSheet({
       </div>
     </div>
   );
-}
-
-/**
- * Display-only capability legend (PR 5). Reads each preset's
- * `supportedResolutions` / `supportedDurations` from `/api/presets` and
- * renders the union as a single subtitle under the sheet header. The
- * underlying picker doesn't exist yet — that lands in PR 6.
- *
- * Renders nothing if every visible preset only declares its baseline render
- * setting (i.e. nothing extra to advertise yet).
- */
-function CapabilityLegend({ presets }: { presets: PresetSummary[] }) {
-  if (presets.length === 0) return null;
-  const resSet = new Set<string>();
-  const durSet = new Set<number>();
-  for (const p of presets) {
-    for (const r of p.supportedResolutions ?? []) resSet.add(r);
-    for (const d of p.supportedDurations ?? []) durSet.add(d);
-  }
-  const resolutionsList = Array.from(resSet).sort(compareResolution);
-  const durationsList = Array.from(durSet).sort((a, b) => a - b);
-  const hasExtraResolutions =
-    resolutionsList.length > 1 ||
-    presets.some((p) => !(p.supportedResolutions ?? []).includes(p.resolution));
-  const hasExtraDurations =
-    durationsList.length > 1 ||
-    presets.some((p) => !(p.supportedDurations ?? []).includes(p.durationSec));
-  if (!hasExtraResolutions && !hasExtraDurations) return null;
-  return (
-    <p className="mt-2 text-[12px] leading-snug text-ink-400">
-      Quality picker for {resolutionsList.join(" · ")} × {durationsList.map((d) => `${d}s`).join(" · ")}{" "}
-      arrives next.
-    </p>
-  );
-}
-
-const RESOLUTION_RANK: Record<string, number> = { "480p": 0, "720p": 1, "1080p": 2 };
-function compareResolution(a: string, b: string): number {
-  return (RESOLUTION_RANK[a] ?? 99) - (RESOLUTION_RANK[b] ?? 99);
 }

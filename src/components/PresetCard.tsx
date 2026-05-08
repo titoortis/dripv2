@@ -2,6 +2,20 @@
 
 import { cn } from "@/lib/utils";
 
+/**
+ * `(resolution, durationSec)` pairs the picker is allowed to expose for this
+ * preset, plus the exact integer credits we'll debit at submit. Computed
+ * server-side as `supportedResolutions × supportedDurations ∩
+ * PROVIDER_VERIFIED_COMBOS` (see `/api/presets`). The picker iterates this
+ * list directly — it does not Cartesian-product the supported axes, which
+ * would expose verification-pending combos.
+ */
+export type AvailableCombo = {
+  resolution: string;
+  durationSec: number;
+  creditsCost: number;
+};
+
 export type PresetSummary = {
   id: string;
   title: string;
@@ -10,11 +24,12 @@ export type PresetSummary = {
   aspectRatio: string;
   durationSec: number;
   resolution: string;
-  // PR 5 capability seam. Always includes at least the baseline `resolution`
-  // and `durationSec`; PR 6 quality picker reads these to enumerate options.
-  // Display-only today.
+  // PR 5 capability seam (kept for diagnostics / future "more qualities soon"
+  // hints). Display-only.
   supportedResolutions: string[];
   supportedDurations: number[];
+  // PR 6 picker source-of-truth.
+  availableCombos: AvailableCombo[];
 };
 
 export function PresetCard({

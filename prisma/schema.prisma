@@ -175,6 +175,18 @@ model GenerationJob {
   referralCodeId  String?
   presetId        String
   sourceImageId   String
+  // PR 6 quality picker. The user's chosen render quality + the credits we
+  // actually debited for this submission. Persisted on the row (not derived
+  // from the preset baseline) because:
+  //   - the runner submits with these exact values, not the preset's;
+  //   - the wallet refund pays back exactly what we charged, not whatever
+  //     the preset baseline would compute today (preset rows are mutable);
+  //   - audit/ledger correctness must survive preset edits.
+  // Defaults narrow to the PR4 baseline so existing rows (currently zero in
+  // any deployed DB) stay truthful after `prisma db push`.
+  resolution      String    @default("720p")
+  durationSec     Int       @default(5)
+  creditsCost     Int       @default(1)
   status          String    @default("queued")
   provider        String    @default("byteplus_seedance_2")
   providerModelId String

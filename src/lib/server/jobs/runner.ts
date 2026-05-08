@@ -57,13 +57,17 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   });
 
   try {
+    // PR 6: render quality is whatever the user picked, persisted on the job
+    // row at submit time. The preset's `resolution`/`durationSec` columns
+    // remain the *baseline* for display fallbacks but are no longer the
+    // source of truth for what we send to the provider.
     const { providerTaskId } = await seedance.createImageToVideoTask({
       modelId: job.providerModelId,
       promptText: job.preset.promptTemplate,
       imageUrl: job.sourceImage.publicUrl,
       ratio: job.preset.aspectRatio,
-      resolution: job.preset.resolution,
-      durationSec: job.preset.durationSec,
+      resolution: job.resolution,
+      durationSec: job.durationSec,
       generateAudio: job.preset.generateAudio,
     });
 

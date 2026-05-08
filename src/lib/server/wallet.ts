@@ -102,11 +102,19 @@ export async function getBalance(userId: string): Promise<number> {
 export async function maybeRefundJob(jobId: string): Promise<void> {
   const job = await prisma.generationJob.findUnique({
     where: { id: jobId },
-    select: { id: true, userId: true, errorCode: true, status: true },
+    // PR 6: refund the exact amount we debited at submit time. `creditsCost`
+    // is persisted on the job row so the refund stays correct even if the
+    // preset's price ever changes between debit and refund. Falls back to 1
+    // for any pre-PR-6 job rows that predate the column (defaulted to 1
+    // anyway by the schema).
+    select: { id: true, userId: true, errorCode: true, status: true, creditsCost: true },
   });
   if (!job) return;
   if (!job.userId) return; // pre-PR-2 jobs were not debited; nothing to refund.
   if (!isRefundableErrorCode(job.errorCode)) return;
+
+  const refundAmount = Math.max(0, job.creditsCost);
+  if (refundAmount === 0) return;
 
   await prisma.$transaction(async (tx) => {
     const already = await tx.jobLedgerEntry.findFirst({
@@ -115,13 +123,13 @@ export async function maybeRefundJob(jobId: string): Promise<void> {
     if (already) return;
     await tx.entitlementWallet.update({
       where: { userId: job.userId! },
-      data: { balance: { increment: 1 } },
+      data: { balance: { increment: refundAmount } },
     });
     await tx.jobLedgerEntry.create({
       data: {
         userId: job.userId!,
         type: "refund",
-        amount: 1,
+        amount: refundAmount,
         reason: job.errorCode ?? "unknown",
         jobId,
       },
@@ -129,6 +137,7 @@ export async function maybeRefundJob(jobId: string): Promise<void> {
     logEvent("wallet_refunded", {
       job_id: jobId,
       user_id: job.userId,
+      amount: refundAmount,
       reason: job.errorCode,
     });
   });
