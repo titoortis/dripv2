@@ -4,6 +4,7 @@ import { logError, logEvent } from "../logger";
 import { prisma } from "../prisma";
 import { seedance, SeedanceError, type ProviderTaskStatus } from "../providers/seedance";
 import { storage } from "../storage";
+import { maybeRefundJob } from "../wallet";
 import { isTerminal } from "./types";
 
 export type StartJobInput = {
@@ -39,6 +40,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
       from: job.status,
       reason: "missing_api_key",
     });
+    await maybeRefundJob(jobId);
     return;
   }
 
@@ -116,6 +118,7 @@ export async function pollOnce(jobId: string): Promise<void> {
       from: job.status,
       provider_task_id: job.providerTaskId,
     });
+    await maybeRefundJob(jobId);
     return;
   }
 
@@ -159,6 +162,7 @@ export async function pollOnce(jobId: string): Promise<void> {
           reason: "succeeded_without_url",
           provider_task_id: job.providerTaskId,
         });
+        await maybeRefundJob(jobId);
         return;
       }
       await persistResult(jobId, videoUrl, task.content?.last_frame_url);
@@ -179,6 +183,9 @@ export async function pollOnce(jobId: string): Promise<void> {
         provider_error_code: task.error?.code ?? null,
         provider_task_id: job.providerTaskId,
       });
+      // Refund applies only to refundable codes (5xx, internal_error, etc).
+      // Provider 4xx (bad photo) and `cancelled` don't refund — see wallet.ts.
+      await maybeRefundJob(jobId);
     }
   } catch (err) {
     if (err instanceof SeedanceError && err.httpStatus >= 500) {
@@ -213,6 +220,7 @@ async function persistResult(jobId: string, sourceUrl: string, lastFrameUrl?: st
         errorReason: `Could not download result: HTTP ${res.status}`,
       },
     });
+    await maybeRefundJob(jobId);
     return;
   }
   const arrayBuf = await res.arrayBuffer();
@@ -277,4 +285,5 @@ async function markFailedFromError(jobId: string, err: unknown) {
     where: { id: jobId },
     data: { status: "failed", errorCode: code, errorReason: reason },
   });
+  await maybeRefundJob(jobId);
 }

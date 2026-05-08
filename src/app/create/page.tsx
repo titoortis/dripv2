@@ -31,6 +31,7 @@ function CreatePageInner() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -50,12 +51,29 @@ function CreatePageInner() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/wallet", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { balance: number } | null) => {
+        if (!alive || !j) return;
+        setBalance(j.balance);
+      })
+      .catch(() => {
+        /* swallow; banner just won't render */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const selected = useMemo(
     () => presets.find((p) => p.id === selectedId) ?? null,
     [presets, selectedId],
   );
 
-  const canGenerate = Boolean(source?.id && selected?.id) && !submitting;
+  const outOfCredits = balance !== null && balance < 1;
+  const canGenerate = Boolean(source?.id && selected?.id) && !submitting && !outOfCredits;
 
   async function generate() {
     if (!source || !selected) return;
@@ -67,11 +85,19 @@ function CreatePageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ presetId: selected.id, sourceImageId: source.id }),
       });
+      if (res.status === 402) {
+        const j = (await res.json().catch(() => null)) as { balance?: number } | null;
+        if (typeof j?.balance === "number") setBalance(j.balance);
+        setError(null); // banner handles this state
+        setSubmitting(false);
+        return;
+      }
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error || `HTTP ${res.status}`);
       }
-      const j = (await res.json()) as { job: { id: string } };
+      const j = (await res.json()) as { job: { id: string }; balance?: number };
+      if (typeof j.balance === "number") setBalance(j.balance);
       router.push(`/jobs/${j.job.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start generation");
@@ -83,6 +109,7 @@ function CreatePageInner() {
     <AppShell>
       <div className="px-safe pb-[140px] pt-2">
         <h1 className="heading-display mb-3 text-[22px] tracking-tight text-ink-50">Create video</h1>
+        <WalletBanner balance={balance} />
         <UploadPad value={source} onChange={setSource} />
 
         <section className="mt-6">
@@ -126,14 +153,18 @@ function CreatePageInner() {
           ) : null}
           {error ? <div className="mb-2 px-1 text-[12px] text-danger">{error}</div> : null}
           <Button block size="lg" disabled={!canGenerate} onClick={generate}>
-            {submitting ? "Starting…" : "Generate"}
-            {!submitting && (
+            {submitting ? "Starting…" : outOfCredits ? "Out of credits" : "Generate"}
+            {!submitting && !outOfCredits && (
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             )}
           </Button>
-          {!canGenerate && !submitting ? (
+          {outOfCredits ? (
+            <p className="mt-2 text-center text-[11px] text-ink-400">
+              You used your trial. Pricing packs land soon.
+            </p>
+          ) : !canGenerate && !submitting ? (
             <p className="mt-2 text-center text-[11px] text-ink-400">
               {source ? "Pick a preset to continue." : "Upload a photo to continue."}
             </p>
@@ -152,6 +183,33 @@ function CreatePageInner() {
         onClose={() => setSheetOpen(false)}
       />
     </AppShell>
+  );
+}
+
+function WalletBanner({ balance }: { balance: number | null }) {
+  if (balance === null) return null;
+  if (balance >= 1) {
+    const label = balance === 1 ? "1 free video" : `${balance} videos`;
+    return (
+      <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
+        <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
+          Trial
+        </div>
+        <div className="flex-1 text-[12px] text-ink-200">
+          {label} ready to go. Pick a preset to use it.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
+      <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-danger">
+        Out of credits
+      </div>
+      <div className="flex-1 text-[12px] text-ink-200">
+        You used your trial. Pricing packs land soon.
+      </div>
+    </div>
   );
 }
 

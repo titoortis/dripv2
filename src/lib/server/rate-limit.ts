@@ -1,9 +1,18 @@
 /**
  * In-memory token-bucket rate limiter.
  *
- * Single-process only. Resets on restart. Good enough for one Node service;
- * not a security primitive. For multi-instance deploys, swap the backing
- * store for Redis / Upstash without changing the public surface.
+ * Scope: SINGLE-PROCESS ONLY. Resets on restart. Not horizontally-scaled-
+ * serverless ready (Vercel multi-instance, multi-region, etc.). Good enough
+ * for one Node service. For multi-instance deploys, swap the backing store
+ * for Redis / Upstash without changing the public surface (`consume`).
+ *
+ * Policy (intentional, not accidental):
+ *   - Callers run `consume()` BEFORE input validation. A `400 invalid body`
+ *     therefore still consumes a token. This is fail-closed by design — a
+ *     burst of malformed requests should be throttled, not amplified by
+ *     skipping the limiter on parse errors.
+ *   - Per-IP bucket fires before per-session bucket. If IP is denied we
+ *     short-circuit and DO NOT debit the session bucket.
  */
 
 import type { NextRequest } from "next/server";
