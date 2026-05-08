@@ -7,7 +7,7 @@ import { startPoller } from "@/lib/server/jobs/poller";
 import { logEvent } from "@/lib/server/logger";
 import { clientIp, consume } from "@/lib/server/rate-limit";
 import { getOrCreateUser } from "@/lib/server/users";
-import { ensureWalletAndTrial } from "@/lib/server/wallet";
+import { ensureWallet } from "@/lib/server/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,10 +52,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid body", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Resolve the anonymous user and ensure the trial credit has been granted
-  // exactly once. Both calls are idempotent.
+  // Resolve the anonymous user and ensure the wallet row exists. New users
+  // start at balance=0 — paid-only MVP, no trial grant (PR 3 retraction).
   const user = await getOrCreateUser(sessionId);
-  await ensureWalletAndTrial(user.id);
+  await ensureWallet(user.id);
 
   const [preset, image] = await Promise.all([
     prisma.preset.findUnique({ where: { id: parsed.data.presetId } }),

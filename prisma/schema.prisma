@@ -33,7 +33,9 @@ model User {
 
 // ---------------------------------------------------------------------------
 // Whole-video credit balance per user. One video = one credit.
-// `trialGrantedAt` is the idempotency seam for the first-visit trial grant.
+// `trialGrantedAt` is a forward-only seam (no MVP writer): PR 2 used it to
+// gate a first-visit trial grant; PR 3 rolled that back to a paid-only MVP.
+// The column stays for future first-pack-discount logic etc.
 // ---------------------------------------------------------------------------
 model EntitlementWallet {
   id             String    @id @default(cuid())
