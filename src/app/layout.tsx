@@ -1,20 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource/instrument-serif/400-italic.css";
 import "./globals.css";
 import { TelegramBoot } from "@/components/TelegramBoot";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sans",
-});
-
-const interDisplay = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["600", "700", "800"],
-  variable: "--font-display",
-});
 
 export const metadata: Metadata = {
   title: "drip — Seedance 2.0 video presets",
@@ -34,7 +26,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${interDisplay.variable}`}>
+    <html lang="en" className="dark">
       <body className="min-h-screen bg-ink-950 text-ink-100 antialiased">
         <TelegramBoot />
         {children}
