@@ -19,18 +19,40 @@
 import { prisma } from "./prisma";
 import { logEvent } from "./logger";
 
+/**
+ * Refund policy taxonomy (decided in PR 4 after live BytePlus validation):
+ *
+ *   - **user-fault** failures (bad photo, prompt rejected for content policy,
+ *     anything coming back as a provider 4xx that's about the input) → no
+ *     refund. The user got a real attempt; the credit stays burned.
+ *   - **provider-fault** failures (BytePlus 5xx, our own download_failed
+ *     pulling the result, succeeded_without_url) → refund.
+ *   - **operator-fault** failures (our BytePlus account is misconfigured —
+ *     `SetLimitExceeded` from Safe Experience Mode, future similar codes
+ *     where the model service refuses our account, not the user's photo)
+ *     → refund.
+ *   - **internal** failures (`internal_error`, `wall_clock_timeout`,
+ *     `missing_api_key` — generation never actually started) → refund.
+ *
+ * Names below mirror what either our runner or BytePlus puts into
+ * `GenerationJob.errorCode`.
+ */
 const REFUNDABLE_CODES = new Set([
+  // internal — generation never actually reached the provider
   "missing_api_key",
   "wall_clock_timeout",
+  // provider — Seedance accepted the task but didn't deliver a usable url
   "succeeded_without_url",
   "download_failed",
   "internal_error",
+  // operator — our BytePlus account refused the model on us, not the user
+  "SetLimitExceeded",
 ]);
 
-/** Provider 5xx is also our fault — refund. Provider 4xx is the user's photo, do NOT refund. */
 function isRefundableErrorCode(code: string | null | undefined): boolean {
   if (!code) return false;
   if (REFUNDABLE_CODES.has(code)) return true;
+  // Provider 5xx is provider-fault — refund. Provider 4xx is user-fault — keep burned.
   if (code.startsWith("http_5")) return true;
   return false;
 }
