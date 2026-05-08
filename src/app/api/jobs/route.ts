@@ -4,6 +4,8 @@ import { prisma } from "@/lib/server/prisma";
 import { requestHash } from "@/lib/server/jobs/hash";
 import { getOrCreateSessionId } from "@/lib/server/session";
 import { startPoller } from "@/lib/server/jobs/poller";
+import { logEvent } from "@/lib/server/logger";
+import { clientIp, consume } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,10 +15,35 @@ const CreateBody = z.object({
   sourceImageId: z.string().min(1),
 });
 
+// 6 jobs per minute per session, with bursts up to 3.
+const SESSION_LIMIT = { capacity: 3, refillPerSec: 6 / 60 } as const;
+// 20 jobs per minute per IP, with bursts up to 8.
+const IP_LIMIT = { capacity: 8, refillPerSec: 20 / 60 } as const;
+
 export async function POST(req: Request) {
   startPoller();
 
   const sessionId = getOrCreateSessionId();
+
+  const ip = clientIp(req);
+  const ipResult = consume(`jobs:ip:${ip}`, IP_LIMIT);
+  const sessionResult = ipResult.ok
+    ? consume(`jobs:session:${sessionId}`, SESSION_LIMIT)
+    : ipResult;
+  if (!ipResult.ok || !sessionResult.ok) {
+    const retryAfter = Math.max(ipResult.retryAfter, sessionResult.retryAfter);
+    logEvent("rate_limited", {
+      route: "POST /api/jobs",
+      ip,
+      session_id: sessionId,
+      reason: !ipResult.ok ? "ip" : "session",
+    });
+    return NextResponse.json(
+      { error: "rate_limited", retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
+  }
+
   const json = await req.json().catch(() => null);
   const parsed = CreateBody.safeParse(json);
   if (!parsed.success) {
