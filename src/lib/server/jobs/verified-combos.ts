@@ -3,18 +3,23 @@
  *
  * The locked product surface (480p / 720p / 1080p × 5s / 10s / 15s) is what
  * the multipliers price for, but PR 6 only opens combos that have been live-
- * validated against BytePlus end-to-end. PR 4 proved exactly one combo:
- * 720p × 5s (`iron_hero_v1` happy-path, task `cgt-20260508235237-kp6rg`,
- * H.264 720×1280, 5.04 s, mp4 re-hosted on our storage).
+ * validated against BytePlus end-to-end.
+ *
+ * Today the set holds exactly one entry: 720p × 5s. This is the operator-
+ * asserted baseline combo — durable live-verification artifact (BytePlus
+ * task id, mp4 url + sha256, matching `JobLedgerEntry` row) is **not yet
+ * present in the project record**. A later, explicit verification step
+ * will capture and attach that evidence; until then this entry is the
+ * operator's word, not a checked-in proof.
  *
  * As more combos are live-verified, append them to `PROVIDER_VERIFIED_COMBOS`
- * — one PR per verified combo, with the live evidence in the PR description.
- * Do not bulk-add. Each entry is a contract that we will render at that
- * quality without silent failure.
+ * — one PR per verified combo, with the live evidence (task id, mp4 + hash,
+ * ledger row) in the PR description. Do not bulk-add. Each entry is a
+ * contract that we will render at that quality without silent failure.
  *
  * The picker (UI) hides any combo not in this set; the API rejects any combo
  * not in this set with `verification_pending`. Both sides query the same
- * source of truth via `isCombo Verified` so the gate cannot drift.
+ * source of truth via `isComboVerified` so the gate cannot drift.
  */
 
 import type { Resolution, Duration } from "@/lib/pricing";
