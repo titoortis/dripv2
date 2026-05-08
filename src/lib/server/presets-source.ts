@@ -10,6 +10,15 @@
  * be replaced with the operator's own copy without UI changes.
  */
 
+/**
+ * Capability vocabulary. PR 5 adds these as the forward-friendly seam the PR 6
+ * quality picker will read; submit-time still uses the preset's `resolution` /
+ * `durationSec` baseline. Listed values are the locked product surface
+ * (480p / 720p / 1080p × 5s / 10s / 15s); narrowing per preset is allowed.
+ */
+export type PresetResolution = "480p" | "720p" | "1080p";
+export type PresetDuration = 5 | 10 | 15;
+
 export type PresetSeed = {
   id: string;
   title: string;
@@ -17,8 +26,20 @@ export type PresetSeed = {
   thumbnailUrl?: string;
   promptTemplate: string;
   aspectRatio: "9:16" | "16:9" | "1:1" | "adaptive";
-  durationSec: number;
-  resolution: "720p" | "1080p";
+  durationSec: PresetDuration;
+  resolution: PresetResolution;
+  /**
+   * Resolutions this preset advertises support for, including the baseline
+   * `resolution`. PR 5 stores this as a CSV string in SQLite; client
+   * receives the parsed array via `/api/presets`. Display-only until PR 6.
+   * Defaults to `[resolution]` when omitted.
+   */
+  supportedResolutions?: PresetResolution[];
+  /**
+   * Same shape as `supportedResolutions`, but for video duration. Defaults
+   * to `[durationSec]` when omitted.
+   */
+  supportedDurations?: PresetDuration[];
   generateAudio?: boolean;
   motionNotes?: string;
   modelId?: string;
@@ -27,6 +48,12 @@ export type PresetSeed = {
 };
 
 const DEFAULT_MODEL = "dreamina-seedance-2-0-260128";
+
+// Locked product surface (see GELOAGENT.md). Every PR 5 platform preset
+// advertises the full grid; PR 6 will enforce per-quality multipliers and
+// gate combos that aren't live-verified against the provider.
+const FULL_RESOLUTIONS: PresetResolution[] = ["480p", "720p", "1080p"];
+const FULL_DURATIONS: PresetDuration[] = [5, 10, 15];
 
 export const PRESETS: PresetSeed[] = [
   {
@@ -38,6 +65,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "slow push-in, key light, particle accents",
     sortOrder: 10,
   },
@@ -50,6 +79,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "slow-mo, rim light, warehouse",
     sortOrder: 20,
   },
@@ -62,6 +93,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "radial motion blur, neon streaks",
     sortOrder: 30,
   },
@@ -74,6 +107,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "wind, golden hour, slow turn",
     sortOrder: 40,
   },
@@ -86,6 +121,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "vertical pull-back, atmospheric",
     sortOrder: 50,
   },
@@ -98,6 +135,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "handheld, golden hour, soft",
     sortOrder: 60,
   },
@@ -110,6 +149,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "VFX portal, energy wash",
     sortOrder: 70,
   },
@@ -122,6 +163,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "wing reveal, volumetrics",
     sortOrder: 80,
   },
@@ -134,6 +177,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "follow cam, dusk",
     sortOrder: 90,
   },
@@ -146,6 +191,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "low angle, smoke, rim light",
     sortOrder: 100,
   },
@@ -158,6 +205,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "marine, handheld",
     sortOrder: 110,
   },
@@ -170,6 +219,8 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
+    supportedResolutions: FULL_RESOLUTIONS,
+    supportedDurations: FULL_DURATIONS,
     motionNotes: "dolly in, hard beam",
     sortOrder: 120,
   },
