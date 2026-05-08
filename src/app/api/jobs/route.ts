@@ -6,6 +6,8 @@ import { getOrCreateSessionId } from "@/lib/server/session";
 import { startPoller } from "@/lib/server/jobs/poller";
 import { logEvent } from "@/lib/server/logger";
 import { clientIp, consume } from "@/lib/server/rate-limit";
+import { getOrCreateUser } from "@/lib/server/users";
+import { ensureWalletAndTrial } from "@/lib/server/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +52,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid body", details: parsed.error.flatten() }, { status: 400 });
   }
 
+  // Resolve the anonymous user and ensure the trial credit has been granted
+  // exactly once. Both calls are idempotent.
+  const user = await getOrCreateUser(sessionId);
+  await ensureWalletAndTrial(user.id);
+
   const [preset, image] = await Promise.all([
     prisma.preset.findUnique({ where: { id: parsed.data.presetId } }),
     prisma.sourceImage.findUnique({ where: { id: parsed.data.sourceImageId } }),
@@ -72,7 +79,8 @@ export async function POST(req: Request) {
     promptTemplate: preset.promptTemplate,
   });
 
-  // Idempotency: same session + same normalized inputs → return existing job.
+  // Idempotency: same session + same normalized inputs → return the existing
+  // job and DO NOT debit again. The original POST already debited.
   const existing = await prisma.generationJob.findUnique({
     where: { sessionId_requestHash: { sessionId, requestHash: hash } },
   });
@@ -80,18 +88,57 @@ export async function POST(req: Request) {
     return NextResponse.json({ job: serialize(existing) });
   }
 
-  const job = await prisma.generationJob.create({
-    data: {
-      sessionId,
-      presetId: preset.id,
-      sourceImageId: image.id,
-      providerModelId: preset.modelId,
-      requestHash: hash,
-      status: "queued",
-    },
+  // New job. Atomic: re-read balance, create job, debit, write ledger entry.
+  // We do NOT start the runner inside the tx so the row-locks stay short.
+  const result = await prisma.$transaction(async (tx) => {
+    const wallet = await tx.entitlementWallet.findUnique({ where: { userId: user.id } });
+    if (!wallet || wallet.balance < 1) {
+      return { kind: "no_credits" as const, balance: wallet?.balance ?? 0 };
+    }
+    const created = await tx.generationJob.create({
+      data: {
+        sessionId,
+        userId: user.id,
+        presetId: preset.id,
+        sourceImageId: image.id,
+        providerModelId: preset.modelId,
+        requestHash: hash,
+        status: "queued",
+      },
+    });
+    await tx.entitlementWallet.update({
+      where: { userId: user.id },
+      data: { balance: { decrement: 1 } },
+    });
+    await tx.jobLedgerEntry.create({
+      data: {
+        userId: user.id,
+        type: "debit",
+        amount: 1,
+        reason: "generation",
+        jobId: created.id,
+      },
+    });
+    return { kind: "ok" as const, job: created, remaining: wallet.balance - 1 };
   });
 
-  return NextResponse.json({ job: serialize(job) }, { status: 201 });
+  if (result.kind === "no_credits") {
+    logEvent("no_credits", {
+      route: "POST /api/jobs",
+      user_id: user.id,
+      session_id: sessionId,
+      balance: result.balance,
+    });
+    return NextResponse.json(
+      { error: "no_credits", balance: result.balance },
+      { status: 402 },
+    );
+  }
+
+  return NextResponse.json(
+    { job: serialize(result.job), balance: result.remaining },
+    { status: 201 },
+  );
 }
 
 export async function GET() {
