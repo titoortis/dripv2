@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   motion,
   useScroll,
   useTransform,
   type MotionValue,
 } from "framer-motion";
+import { isMarketingMode } from "@/components/ComingSoon";
+import { PresetLauncher } from "@/components/PresetLauncher";
+import { PresetPlaceholder, type PresetSummary } from "@/components/PresetCard";
 
 const HERO_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
@@ -16,6 +20,7 @@ export default function Home() {
   return (
     <main className="theme-landing min-h-screen overflow-x-hidden">
       <HeroSection />
+      <FeaturedPresetSection />
       <TestimonialSection />
     </main>
   );
@@ -303,6 +308,194 @@ function PresetDeckMock() {
         ))}
       </div>
     </div>
+  );
+}
+
+/* ----------------------------------------------------- Featured preset */
+
+/**
+ * "First preset" surface on the homepage. Fetches `/api/presets` (which is
+ * already sorted by `sortOrder` server-side) and renders the first row as a
+ * single big interactive card. On desktop the card scales subtly on hover;
+ * on mobile the card is tap-affordant (no hover dependency). Clicking opens
+ * the Higgs-style `PresetLauncher` overlay over the homepage — we never
+ * navigate away.
+ *
+ * Marketing-mode fallback: if `NEXT_PUBLIC_LAUNCH_MODE=marketing`, the card
+ * routes to `/create` instead of opening the launcher (because `/api/jobs`
+ * + `/api/uploads` may not be wired in that deploy). `/create` then short-
+ * circuits to `<ComingSoon />` — same UX path as the existing "Pick a
+ * preset" CTA above.
+ */
+function FeaturedPresetSection() {
+  const router = useRouter();
+  const [preset, setPreset] = useState<PresetSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/presets", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { presets: PresetSummary[] } | null) => {
+        if (!alive) return;
+        if (j && j.presets[0]) setPreset(j.presets[0]);
+      })
+      .catch(() => {
+        /* swallow; section just renders empty */
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function handleOpen() {
+    if (isMarketingMode()) {
+      router.push("/create");
+      return;
+    }
+    setOpen(true);
+  }
+
+  return (
+    <section className="px-6 pb-24 pt-8 md:px-28 md:pb-32">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-8 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[hsl(0_0%_60%)]">
+            Featured preset
+          </span>
+          <h2 className="text-3xl font-medium leading-tight tracking-[-1px] md:text-5xl md:leading-[1.1]">
+            Start with{" "}
+            <span className="font-serif font-normal italic">Iron Hero</span>
+          </h2>
+          <p className="max-w-md text-[14px] leading-6 text-[hsl(0_0%_65%)]">
+            Tap the card. Drop a portrait. We&rsquo;ll suit you up.
+          </p>
+        </div>
+
+        {loading ? (
+          <FeaturedPresetSkeleton />
+        ) : preset ? (
+          <FeaturedPresetCard preset={preset} onOpen={handleOpen} />
+        ) : (
+          <div className="rounded-3xl border border-white/10 bg-black/40 px-6 py-8 text-sm text-[hsl(0_0%_65%)]">
+            Presets are warming up. Try refreshing in a moment.
+          </div>
+        )}
+      </div>
+
+      <PresetLauncher open={open} preset={preset} onClose={() => setOpen(false)} />
+    </section>
+  );
+}
+
+function FeaturedPresetCard({
+  preset,
+  onOpen,
+}: {
+  preset: PresetSummary;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="group relative w-full max-w-md">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${preset.title} launcher`}
+        className="relative block aspect-[9/16] w-full overflow-hidden rounded-3xl bg-black ring-1 ring-white/10 transition duration-300 ease-out will-change-transform md:hover:-translate-y-1 md:hover:scale-[1.02] md:hover:ring-white/30 md:hover:shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+      >
+        {/* Visual */}
+        {preset.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={preset.thumbnailUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out md:group-hover:scale-[1.04]"
+          />
+        ) : (
+          <div className="absolute inset-0 transition-transform duration-500 ease-out md:group-hover:scale-[1.04]">
+            <PresetPlaceholder seed={preset.id} />
+          </div>
+        )}
+
+        {/* Bottom gradient + meta */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/60 to-transparent p-5 text-left">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+                Seedance 2.0
+              </div>
+              <div className="mt-1 truncate text-[20px] font-semibold leading-tight tracking-tight text-white">
+                {preset.title}
+              </div>
+              {preset.subtitle ? (
+                <div className="mt-0.5 truncate text-[12px] text-white/70">
+                  {preset.subtitle}
+                </div>
+              ) : null}
+            </div>
+            <div className="shrink-0">
+              <PlayBadge />
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-white/70">
+            <MetaPill>{preset.aspectRatio}</MetaPill>
+            <MetaPill>{`${preset.durationSec}s`}</MetaPill>
+            <MetaPill>{preset.resolution}</MetaPill>
+            {preset.availableCombos[0] ? (
+              <MetaPill>
+                {`${preset.availableCombos[0].creditsCost} ${
+                  preset.availableCombos[0].creditsCost === 1 ? "credit" : "credits"
+                }`}
+              </MetaPill>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Top-right hint chip — visible always so the card looks tappable on mobile too */}
+        <div className="pointer-events-none absolute right-4 top-4">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-medium text-white backdrop-blur transition group-hover:bg-white/25">
+            Tap to launch
+            <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" d="M5 12h14M13 5l7 7-7 7" />
+            </svg>
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function FeaturedPresetSkeleton() {
+  return (
+    <div
+      aria-hidden
+      className="aspect-[9/16] w-full max-w-md animate-pulse rounded-3xl bg-white/5 ring-1 ring-white/10"
+    />
+  );
+}
+
+function MetaPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/85 ring-1 ring-white/10">
+      {children}
+    </span>
+  );
+}
+
+function PlayBadge() {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-black ring-1 ring-white/30 shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition group-hover:scale-105"
+    >
+      <svg viewBox="0 0 24 24" className="ml-0.5 h-4 w-4" fill="currentColor">
+        <path d="M8 5v14l11-7L8 5z" />
+      </svg>
+    </span>
   );
 }
 

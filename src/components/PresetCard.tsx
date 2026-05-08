@@ -94,8 +94,10 @@ function SelectedDot() {
 }
 
 /** Deterministic gradient placeholder so the grid still feels designed
- *  without bundled assets. The seed is the preset id. */
-function PresetPlaceholder({ seed }: { seed: string }) {
+ *  without bundled assets. The seed is the preset id. Exported so the
+ *  PresetLauncher overlay (and any future hero surface) renders the exact
+ *  same fallback as the card grid for the same preset id. */
+export function PresetPlaceholder({ seed }: { seed: string }) {
   const palette = pickPalette(seed);
   return (
     <div
