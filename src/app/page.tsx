@@ -9,8 +9,6 @@ import {
   type MotionValue,
 } from "framer-motion";
 
-import { PromptComposer } from "@/components/landing/PromptComposer";
-
 const HERO_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
 
@@ -84,9 +82,33 @@ function HeroSection() {
           No prompts. Just trending VFX presets.
         </motion.p>
 
-        <div className="w-full px-2">
-          <PromptComposer />
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="flex w-full flex-col items-center gap-3 px-2"
+        >
+          <Link
+            href="/create"
+            className="inline-flex items-center justify-center rounded-full bg-white px-7 py-3 text-base font-semibold text-black transition hover:opacity-90"
+          >
+            Pick a preset
+            <svg
+              viewBox="0 0 24 24"
+              className="ml-2 h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </Link>
+          <span className="text-[12px] text-[hsl(0_0%_55%)]">
+            One photo. One tap. No prompts.
+          </span>
+        </motion.div>
       </motion.div>
 
       <DashboardArea dashboardY={dashboardY} />

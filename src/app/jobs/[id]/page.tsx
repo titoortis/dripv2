@@ -226,24 +226,23 @@ function ShareRow({ url }: { url: string }) {
 }
 
 function FailedView({ job }: { job: JobView }) {
-  const reason = job.errorReason ?? "Generation failed.";
+  const friendly = friendlyFailure(job.status, job.errorCode, job.errorReason);
   return (
     <AppShell>
       <div className="px-safe pb-safe pt-6">
         <div className="rounded-3xl bg-ink-900 p-5 ring-soft">
           <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-danger">
-            {job.status === "expired"
-              ? "Timed out"
-              : job.status === "cancelled"
-                ? "Cancelled"
-                : "Failed"}
+            {friendly.eyebrow}
           </div>
           <h1 className="heading-display mt-1 text-[22px] tracking-tight text-ink-50">
             {job.preset.title}
           </h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-300">{reason}</p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-300">{friendly.headline}</p>
+          {friendly.suggestion ? (
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-300">{friendly.suggestion}</p>
+          ) : null}
           {job.errorCode ? (
-            <p className="mt-2 text-[11px] text-ink-400">code: {job.errorCode}</p>
+            <p className="mt-3 text-[11px] text-ink-400">code: {job.errorCode}</p>
           ) : null}
 
           <div className="mt-6 grid gap-2">
@@ -277,4 +276,82 @@ function labelFor(status: string) {
     default:
       return "Working";
   }
+}
+
+type FriendlyFailure = {
+  eyebrow: string;
+  headline: string;
+  suggestion?: string;
+};
+
+/**
+ * Map a (status, errorCode, errorReason) triple coming from the job into
+ * user-facing copy. Keep prose short and honest. Never expose raw provider
+ * messages — they leak prompt fragments and provider names.
+ */
+function friendlyFailure(
+  status: string,
+  errorCode?: string | null,
+  errorReason?: string | null,
+): FriendlyFailure {
+  if (status === "expired") {
+    return {
+      eyebrow: "Timed out",
+      headline: "This generation took longer than expected and was stopped.",
+      suggestion: "Try again — most renders finish in under a minute.",
+    };
+  }
+  if (status === "cancelled") {
+    return {
+      eyebrow: "Cancelled",
+      headline: "This generation was cancelled before it could finish.",
+      suggestion: "Pick a preset to start a new one.",
+    };
+  }
+
+  const code = (errorCode ?? "").toLowerCase();
+
+  if (code === "missing_api_key") {
+    return {
+      eyebrow: "Not ready yet",
+      headline: "Generation is not available on this build.",
+      suggestion: "Try again later — we are still rolling out.",
+    };
+  }
+  if (code === "wall_clock_timeout") {
+    return {
+      eyebrow: "Timed out",
+      headline: "The provider didn't return a video in time.",
+      suggestion: "Try again with the same preset.",
+    };
+  }
+  if (code === "succeeded_without_url" || code === "download_failed") {
+    return {
+      eyebrow: "Failed",
+      headline: "We couldn't fetch the finished video.",
+      suggestion: "Try again — this is usually transient.",
+    };
+  }
+  if (code.startsWith("http_4")) {
+    return {
+      eyebrow: "Failed",
+      headline:
+        "The provider rejected this generation. Often it's the photo — try a clear, front-lit shot of one person.",
+    };
+  }
+  if (code.startsWith("http_5") || code === "internal_error") {
+    return {
+      eyebrow: "Failed",
+      headline: "Something went wrong on our side.",
+      suggestion: "Try again in a moment.",
+    };
+  }
+  // Fallback: never echo the raw provider string verbatim — just hint it.
+  return {
+    eyebrow: "Failed",
+    headline:
+      errorReason && errorReason.length < 140
+        ? "Generation failed. Please try a different preset or photo."
+        : "Generation failed. Please try a different preset or photo.",
+  };
 }

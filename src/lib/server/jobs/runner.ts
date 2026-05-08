@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { env } from "../env";
+import { logError, logEvent } from "../logger";
 import { prisma } from "../prisma";
 import { seedance, SeedanceError, type ProviderTaskStatus } from "../providers/seedance";
 import { storage } from "../storage";
@@ -32,12 +33,25 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
           "ARK_API_KEY is not configured. Set it in the environment to enable real generation.",
       },
     });
+    logEvent("job_failed", {
+      job_id: jobId,
+      preset_id: job.presetId,
+      from: job.status,
+      reason: "missing_api_key",
+    });
     return;
   }
 
   await prisma.generationJob.update({
     where: { id: jobId },
     data: { status: "uploading", attempts: { increment: 1 } },
+  });
+  logEvent("job_transition", {
+    job_id: jobId,
+    preset_id: job.presetId,
+    from: job.status,
+    to: "uploading",
+    attempts: job.attempts + 1,
   });
 
   try {
@@ -61,7 +75,20 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
         expiresAt: new Date(Date.now() + env().JOB_WALL_CLOCK_TIMEOUT_MS),
       },
     });
+    logEvent("job_transition", {
+      job_id: jobId,
+      preset_id: job.presetId,
+      from: "uploading",
+      to: "submitted",
+      provider_task_id: providerTaskId,
+      model_id: job.providerModelId,
+    });
   } catch (err) {
+    logError("job_submit_error", err, {
+      job_id: jobId,
+      preset_id: job.presetId,
+      model_id: job.providerModelId,
+    });
     await markFailedFromError(jobId, err);
   }
 }
@@ -84,21 +111,36 @@ export async function pollOnce(jobId: string): Promise<void> {
         errorReason: "Generation did not complete in time.",
       },
     });
+    logEvent("job_expired", {
+      job_id: jobId,
+      from: job.status,
+      provider_task_id: job.providerTaskId,
+    });
     return;
   }
 
   try {
     const task = await seedance.getTask(job.providerTaskId);
     const mapped = seedance.mapStatus(task.status);
+    const nextStatus = mapTo(mapped);
 
     await prisma.generationJob.update({
       where: { id: jobId },
       data: {
         providerStatus: task.status,
-        status: mapTo(mapped),
+        status: nextStatus,
         nextPollAt: nextPollDate(),
       },
     });
+    if (nextStatus !== job.status) {
+      logEvent("job_transition", {
+        job_id: jobId,
+        from: job.status,
+        to: nextStatus,
+        provider_status: task.status,
+        provider_task_id: job.providerTaskId,
+      });
+    }
 
     if (mapped === "succeeded") {
       const videoUrl = task.content?.video_url;
@@ -111,17 +153,31 @@ export async function pollOnce(jobId: string): Promise<void> {
             errorReason: "Provider reported succeeded but no video_url was returned.",
           },
         });
+        logEvent("job_failed", {
+          job_id: jobId,
+          from: nextStatus,
+          reason: "succeeded_without_url",
+          provider_task_id: job.providerTaskId,
+        });
         return;
       }
       await persistResult(jobId, videoUrl, task.content?.last_frame_url);
     } else if (mapped === "failed" || mapped === "expired" || mapped === "cancelled") {
+      const terminal = mapped === "expired" ? "expired" : mapped === "cancelled" ? "cancelled" : "failed";
       await prisma.generationJob.update({
         where: { id: jobId },
         data: {
-          status: mapped === "expired" ? "expired" : mapped === "cancelled" ? "cancelled" : "failed",
+          status: terminal,
           errorCode: task.error?.code ?? mapped,
           errorReason: task.error?.message ?? `Provider reported ${task.status}`,
         },
+      });
+      logEvent("job_terminal", {
+        job_id: jobId,
+        to: terminal,
+        provider_status: task.status,
+        provider_error_code: task.error?.code ?? null,
+        provider_task_id: job.providerTaskId,
       });
     }
   } catch (err) {
@@ -131,8 +187,17 @@ export async function pollOnce(jobId: string): Promise<void> {
         where: { id: jobId },
         data: { nextPollAt: nextPollDate() },
       });
+      logEvent("job_poll_transient", {
+        job_id: jobId,
+        http_status: err.httpStatus,
+        provider_task_id: job.providerTaskId,
+      });
       return;
     }
+    logError("job_poll_error", err, {
+      job_id: jobId,
+      provider_task_id: job.providerTaskId,
+    });
     await markFailedFromError(jobId, err);
   }
 }
