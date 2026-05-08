@@ -8,7 +8,13 @@ import { logEvent } from "@/lib/server/logger";
 import { clientIp, consume } from "@/lib/server/rate-limit";
 import { getOrCreateUser } from "@/lib/server/users";
 import { ensureWallet } from "@/lib/server/wallet";
-import { computeCost, type Duration, type Resolution } from "@/lib/pricing";
+import {
+  computeCost,
+  isDuration,
+  isResolution,
+  type Duration,
+  type Resolution,
+} from "@/lib/pricing";
 import { isComboVerified } from "@/lib/server/jobs/verified-combos";
 import {
   parseSupportedDurations,
@@ -89,8 +95,30 @@ export async function POST(req: Request) {
   //      `supportedResolutions` × `supportedDurations` set;
   //   3. provider-verified check — the chosen combo must be in
   //      `PROVIDER_VERIFIED_COMBOS` (PR 4 today proved 720p × 5s only).
-  const baselineRes = preset.resolution as Resolution;
-  const baselineDur = preset.durationSec as Duration;
+  //
+  // Runtime guard on the preset fallback path. `preset.resolution` /
+  // `preset.durationSec` are Prisma `String` / `Int`, but the rest of the
+  // route treats them as members of the locked `Resolution` / `Duration`
+  // vocabulary. A bad preset row (seed bug, future hand-edit, schema-only
+  // migration that didn't normalize legacy data) would otherwise reach
+  // `computeCost` and throw — turning an operator-side data problem into a
+  // confused 500 with a stack trace. We catch it here, log a structured
+  // event, and return a typed discriminator so the issue is observable and
+  // actionable.
+  if (!isResolution(preset.resolution) || !isDuration(preset.durationSec)) {
+    logEvent("preset_quality_invalid", {
+      route: "POST /api/jobs",
+      preset_id: preset.id,
+      preset_resolution: preset.resolution,
+      preset_duration_sec: preset.durationSec,
+    });
+    return NextResponse.json(
+      { error: "preset_quality_invalid" },
+      { status: 500 },
+    );
+  }
+  const baselineRes: Resolution = preset.resolution;
+  const baselineDur: Duration = preset.durationSec;
   const chosenResolution: Resolution = parsed.data.resolution ?? baselineRes;
   const chosenDuration: Duration = parsed.data.durationSec ?? baselineDur;
   const supportedResolutions = parseSupportedResolutions(preset.supportedResolutions, baselineRes);
