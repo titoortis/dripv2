@@ -162,7 +162,7 @@ function CreatePageInner() {
           </Button>
           {outOfCredits ? (
             <p className="mt-2 text-center text-[11px] text-ink-400">
-              You used your trial. Pricing packs land soon.
+              Pricing packs land soon.
             </p>
           ) : !canGenerate && !submitting ? (
             <p className="mt-2 text-center text-[11px] text-ink-400">
@@ -189,14 +189,14 @@ function CreatePageInner() {
 function WalletBanner({ balance }: { balance: number | null }) {
   if (balance === null) return null;
   if (balance >= 1) {
-    const label = balance === 1 ? "1 free video" : `${balance} videos`;
+    const label = balance === 1 ? "1 video" : `${balance} videos`;
     return (
       <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
         <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
-          Trial
+          Credits
         </div>
         <div className="flex-1 text-[12px] text-ink-200">
-          {label} ready to go. Pick a preset to use it.
+          {label} ready to use. Pick a preset.
         </div>
       </div>
     );
@@ -207,7 +207,7 @@ function WalletBanner({ balance }: { balance: number | null }) {
         Out of credits
       </div>
       <div className="flex-1 text-[12px] text-ink-200">
-        You used your trial. Pricing packs land soon.
+        Pricing packs land soon.
       </div>
     </div>
   );

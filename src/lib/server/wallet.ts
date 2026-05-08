@@ -5,16 +5,19 @@
  *   - One whole video = one credit. We do not track partial credits.
  *   - Every change goes through a `JobLedgerEntry` (append-only audit trail).
  *     We never UPDATE ledger rows.
- *   - Trial grant is gated on `EntitlementWallet.trialGrantedAt` so a user
- *     gets exactly one trial across all sessions on the same browser.
+ *   - PR 3 contract: paid-only MVP. There is **no** auto-grant. New users
+ *     start at `balance=0` and must purchase a pack (payment integration
+ *     is a future PR). PR 2 shipped a transitional `trial=1` auto-grant
+ *     that has been intentionally rolled back here.
+ *   - `EntitlementWallet.trialGrantedAt` is kept on the schema as a forward
+ *     seam (e.g. one-time discount on first paid pack) but is never written
+ *     in MVP code paths.
  *   - All multi-step operations run inside `prisma.$transaction` so the
  *     wallet balance and the ledger entry stay in sync, no matter what.
  */
 
 import { prisma } from "./prisma";
 import { logEvent } from "./logger";
-
-const MVP_TRIAL_AMOUNT = 1;
 
 const REFUNDABLE_CODES = new Set([
   "missing_api_key",
@@ -33,50 +36,33 @@ function isRefundableErrorCode(code: string | null | undefined): boolean {
 }
 
 /**
- * Ensure the wallet row exists and grant the first-visit trial credit if
- * we haven't yet. Idempotent.
+ * Ensure the wallet row exists for `userId` with `balance=0`. Idempotent.
+ *
+ * Safe under concurrent first-visit calls: if two requests both miss the
+ * read, only one INSERT wins; the other gets `P2002` and recovers by
+ * re-reading.
  */
-export async function ensureWalletAndTrial(userId: string): Promise<{ balance: number }> {
+export async function ensureWallet(userId: string): Promise<{ balance: number }> {
   const existing = await prisma.entitlementWallet.findUnique({ where: { userId } });
-  if (existing && existing.trialGrantedAt) {
-    return { balance: existing.balance };
-  }
-
-  return prisma.$transaction(async (tx) => {
-    const inside = await tx.entitlementWallet.findUnique({ where: { userId } });
-    if (inside && inside.trialGrantedAt) {
-      return { balance: inside.balance };
-    }
-
-    const wallet = inside
-      ? await tx.entitlementWallet.update({
-          where: { userId },
-          data: {
-            balance: { increment: MVP_TRIAL_AMOUNT },
-            trialGrantedAt: new Date(),
-          },
-        })
-      : await tx.entitlementWallet.create({
-          data: {
-            userId,
-            balance: MVP_TRIAL_AMOUNT,
-            trialGrantedAt: new Date(),
-          },
-        });
-
-    await tx.jobLedgerEntry.create({
-      data: {
-        userId,
-        type: "grant",
-        amount: MVP_TRIAL_AMOUNT,
-        reason: "trial",
-        jobId: null,
-      },
+  if (existing) return { balance: existing.balance };
+  try {
+    const created = await prisma.entitlementWallet.create({
+      data: { userId, balance: 0 },
     });
+    return { balance: created.balance };
+  } catch (e: unknown) {
+    if (isUniqueViolation(e)) {
+      const recovered = await prisma.entitlementWallet.findUnique({ where: { userId } });
+      if (recovered) return { balance: recovered.balance };
+    }
+    throw e;
+  }
+}
 
-    logEvent("wallet_trial_granted", { user_id: userId, amount: MVP_TRIAL_AMOUNT });
-    return { balance: wallet.balance };
-  });
+function isUniqueViolation(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  return code === "P2002";
 }
 
 export async function getBalance(userId: string): Promise<number> {

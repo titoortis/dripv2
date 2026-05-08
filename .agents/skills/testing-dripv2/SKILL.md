@@ -1,6 +1,6 @@
 ---
 name: testing-dripv2
-description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, or the entitlement wallet (trial / debit / refund / 402 / out-of-credits UI). Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
+description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, or the entitlement wallet (debit / refund / 402 / out-of-credits UI). PR 3+ also covers live Seedance validation when ARK_API_KEY is provided. Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
 ---
 
 # Testing dripv2
@@ -18,7 +18,8 @@ Use this skill for changes that touch:
 - Structured logs (`src/lib/server/logger.ts`).
 - Rate limits (`src/lib/server/rate-limit.ts`, `src/app/api/uploads/route.ts`, `src/app/api/jobs/route.ts`).
 - Idempotency (`src/lib/server/jobs/hash.ts` + `@@unique([sessionId, requestHash])`).
-- **Entitlement wallet (PR 2+)** — `src/lib/server/wallet.ts`, `src/lib/server/users.ts`, `src/app/api/wallet/route.ts`, the WalletBanner on `src/app/create/page.tsx`, the 402 no_credits branch in `src/app/api/jobs/route.ts`, and the `maybeRefundJob` seam in `runner.ts`.
+- **Entitlement wallet (PR 2+, retrofit in PR 3)** — `src/lib/server/wallet.ts`, `src/lib/server/users.ts`, `src/app/api/wallet/route.ts`, the WalletBanner on `src/app/create/page.tsx`, the 402 no_credits branch in `src/app/api/jobs/route.ts`, and the `maybeRefundJob` seam in `runner.ts`. **PR 3 contract:** paid-only MVP — there is no auto-trial; new users start at `balance=0` and stay there until a paid pack lands (future PR) or you manually top up via the Prisma snippet below.
+- **Live Seedance (PR 3+)** — `src/lib/server/providers/seedance.ts`, the `submitJob`/`pollJob`/`finalize` paths in `runner.ts`, and result-video persistence.
 
 Skip recording when the change is provider-shape only (e.g. tweaking `src/lib/server/providers/seedance.ts` body shape) — `pnpm typecheck && pnpm lint` is enough there, and a real Seedance call needs `ARK_API_KEY` (PR 3+).
 
@@ -52,7 +53,7 @@ The app is at `http://localhost:3000`.
 Clearing the browser cookie alone is **not enough** to reset to a true first-visit state because:
 - the `dripv2_sid` cookie is `httpOnly`, so JS can't delete it;
 - even with a fresh cookie, the previous user's wallet rows still exist in the DB and would shadow the test if anything queried by `userId`;
-- the trial-grant idempotency seam is `EntitlementWallet.trialGrantedAt`, so just deleting cookies leaves stale `trialGrantedAt` rows.
+- wallet rows are keyed by `userId`, and `trialGrantedAt` is a forward-only seam (no MVP writer) — stale rows still shadow tests by `userId` if you don't wipe.
 
 Wipe the entitlement state directly via Prisma (and the chrome cookie at most loses you context, doesn't break anything):
 
@@ -68,7 +69,7 @@ node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient(
 })()"
 ```
 
-Then reload `/create` — the page calls `GET /api/wallet`, which mints a fresh `User` and grants the trial credit. The new user is keyed by whatever `dripv2_sid` cookie the server set previously; what matters is that there is no `EntitlementWallet` row yet.
+Then reload `/create` — the page calls `GET /api/wallet`, which mints a fresh `User` and an `EntitlementWallet` at `balance=0`. The new user is keyed by whatever `dripv2_sid` cookie the server set previously; what matters is that there is no `EntitlementWallet` row yet (the wipe handles that).
 
 ## Expected FSM behavior with no ARK_API_KEY
 
@@ -78,7 +79,7 @@ Then reload `/create` — the page calls `GET /api/wallet`, which mints a fresh 
   ```json
   {"event":"job_failed","job_id":"...","preset_id":"...","from":"queued","reason":"missing_api_key"}
   ```
-- **PR 2:** the same path also calls `maybeRefundJob(jobId)`, which writes a `wallet_refunded` log line and credits the wallet back. Net effect on a fresh trial: balance goes 1 → 0 → 1 within ~2s.
+- **PR 2 (kept in PR 3):** the same path also calls `maybeRefundJob(jobId)`, which writes a `wallet_refunded` log line and credits the wallet back. Net effect on a **manually-topped-up** wallet: balance goes 1 → 0 → 1 within ~2s. Cold-visit users (`balance=0`) never get past the 402 gate — to exercise the refund path locally you must dev-top-up first (see below).
 - `/jobs/[id]` (client component) polls `/api/jobs/[id]` and flips to the failed view with friendly copy (NOT the raw `errorReason` from the DB).
 
 If you see a `queued → uploading` transition followed by a `submitted` line, that means the runner thinks credentials ARE configured. Recheck `.env`.
@@ -90,17 +91,17 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
 1. **Landing renders preset-first CTA, no public prompt input.**
    - `curl -sS http://localhost:3000/` and assert: `'Pick a preset' in html`, `'/create'` href present, `0` `<textarea>` elements, **no** Russian `Сделать промпт`.
    - Click the `Pick a preset` button → URL becomes `/create`.
-2. **`/create` cold visit shows trial banner.** After the cold-visit DB wipe above, navigate to `/create`. Banner eyebrow must read `TRIAL` in accent (lime) color and body copy must contain `1 free video ready to go`. Generate label must read `Generate`.
+2. **`/create` cold visit shows OUT OF CREDITS.** After the cold-visit DB wipe above, navigate to `/create`. Banner eyebrow must read `OUT OF CREDITS` in **danger** (red) color and body copy must be exactly `Pricing packs land soon.`. Bottom CTA label must read `Out of credits` and the button must be **disabled**. PR 3 paid-only contract — no trial, ever.
 3. **Friendly failure UI on `/jobs/[id]`.**
    - From `/create`, click upload pad → select a small PNG. Auto-selects the first preset. Tap `Generate`.
    - Wait ~3s. Take screenshot. Page must show `NOT READY YET` eyebrow, `Generation is not available on this build.` headline, `code: missing_api_key` footer, and **must not** contain the substring `ARK_API_KEY`.
    - Note: `/jobs/[id]` is a `"use client"` component, so `curl` returns only the loading scaffold. **Use a browser screenshot for the friendly-copy assertion**, not curl.
-4. **Refund restores trial banner.** From the failure screen, click `Try another preset` → back on `/create`. Banner must read `TRIAL · 1 free video ready to go` again — i.e. the refund seam fired on `missing_api_key`. If it stays at `OUT OF CREDITS`, `runner.ts` is missing a `maybeRefundJob` call somewhere.
-5. **Out-of-credits UI.** Drain the wallet directly:
+4. **Refund restores credits banner.** Prerequisite: dev-top-up the wallet to 1 (snippet below). From `/create`, generate → land on the failure screen → click `Try another preset` → back on `/create`. Banner must read `CREDITS · 1 video ready to use. Pick a preset.` again — i.e. the refund seam fired on `missing_api_key`. If it stays at `OUT OF CREDITS`, `runner.ts` is missing a `maybeRefundJob` call somewhere.
+5. **Out-of-credits UI.** Cold visit (post-DB-wipe) is already this state — see T2. The same state is reachable mid-session by manually setting `balance=0`:
    ```js
    node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{await p.entitlementWallet.updateMany({data:{balance:0}});await p.\$disconnect();})()"
    ```
-   Hard-reload `/create`. Banner eyebrow must read `OUT OF CREDITS` in **danger** (red) color and body copy must be exactly `You used your trial. Pricing packs land soon.`. Bottom CTA label must flip to `Out of credits`, and the small footer copy under the button must repeat the same `You used your trial. Pricing packs land soon.` line.
+   Hard-reload `/create`. Same assertions as T2.
 
 ### Shell tests (no recording — capture stdout instead)
 
@@ -110,11 +111,11 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
 8. **Idempotency.** Fresh cookie jar, upload one PNG, POST `/api/jobs` twice with the same `(presetId, sourceImageId)` within ~1s. Both responses must contain the same `job.id`. Status of the second response is allowed to differ (the runner may have already short-circuited in between).
 9. **Idempotency does NOT double-debit (PR 2+).** Same as 8, but also assert `GET /api/wallet` reports the same balance after the second POST as after the first — the dedup branch must run *before* the debit transaction. Ledger must contain exactly one `debit` entry for that `jobId`.
 10. **402 no_credits gate (PR 2+).** Drain the wallet to 0 via Prisma. POST `/api/jobs` must return `402 {"error":"no_credits","balance":0}`. Without the entitlement gate this would 201-create-and-then-fail-on-decrement.
-11. **Ledger audit (PR 2+).** After tests 3+4 complete, dump the session's ledger:
+11. **Ledger audit (PR 3+).** After T4 (manual top-up + generate + refund), dump the session's ledger:
     ```js
     node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const u=await p.user.findUnique({where:{sessionId:'<sid>'},include:{ledgerEntries:{orderBy:{createdAt:'asc'}},wallet:true}});console.log('balance:',u.wallet.balance);for(const e of u.ledgerEntries)console.log({type:e.type,amount:e.amount,reason:e.reason,jobId:e.jobId});await p.\$disconnect();})()"
     ```
-    Must contain exactly `[grant(trial), debit(generation), refund(missing_api_key)]` for a session that completed one full cycle. A fresh, browse-only session must contain only `[grant(trial)]`.
+    Must contain exactly `[grant(dev_topup), debit(generation), refund(missing_api_key)]` (or `[debit, refund]` if the dev-top-up snippet skipped writing a ledger row — not recommended). **A fresh, browse-only session must have an empty ledger** (zero rows). PR 3 retracted the trial auto-grant, so there is no longer a `grant(trial)` row.
 12. **Schema seams populated (PR 2+).** All `Preset` rows must have `visibility="platform"`, `royaltyBps=0`, `ownerUserId=null`. New `GenerationJob` rows must have `userId` set; `creatorUserId` and `referralCodeId` must be `null` in MVP.
 
 ## Adversarial framing
@@ -122,7 +123,7 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
 For each test, ask: "would the same sequence look identical if the change were broken?" If yes, the test is too weak. The catalogue above is designed so:
 
 - T1 fails (textarea reappears, RU button surfaces) if `PromptComposer` is re-mounted.
-- T2 fails if the `WalletBanner` component or the trial-banner branch is missing.
+- T2 fails if the danger branch of `WalletBanner` (or the disabled-Generate-when-balance=0 wiring) is missing.
 - T3 fails if the page renders the raw `errorReason` from the DB instead of the `friendlyFailure()` output.
 - T4 fails if `runner.ts` doesn't call `maybeRefundJob` from the `missing_api_key` short-circuit — banner stays red.
 - T5 fails if the `outOfCredits` derived state isn't wired to the bottom CTA, or if the danger-color branch of `WalletBanner` is missing.
@@ -149,5 +150,44 @@ For each test, ask: "would the same sequence look identical if the change were b
 - **`ARK_API_KEY` accidentally set in shell env?** It overrides `.env`. Run `unset ARK_API_KEY` and restart `pnpm dev`.
 - **Rate-limit not firing because the per-IP bucket is bigger than per-session.** Per-IP cap is 8, per-session is 3. Use a single fresh cookie jar — the per-session bucket is the one that fires first.
 - **Wallet still 0 after expected refund.** Check that the failure path you're exercising has a refundable `errorCode`. Refundable: `missing_api_key`, `wall_clock_timeout`, `succeeded_without_url`, `download_failed`, `internal_error`, anything `http_5*`. **Not refundable:** provider 4xx (bad photo, user fault) and `cancelled`.
-- **Cold-visit test still shows previous trial state.** Cookie clearing alone won't reset it because the cookie is httpOnly and the wallet's `trialGrantedAt` is the idempotency seam. Use the DB-wipe pattern at the top of this skill instead.
-- **`POST /api/jobs` returns 402 unexpectedly.** Either the wallet is genuinely 0, or the runner's refund didn't fire — check `/tmp/dripv2-dev.log` for the matching `wallet_refunded` line.
+- **Cold-visit test still shows a non-empty wallet.** Cookie clearing alone won't reset it because the cookie is httpOnly and the previous user's `EntitlementWallet` row still exists keyed by `userId`. Use the DB-wipe pattern at the top of this skill instead.
+- **`POST /api/jobs` returns 402 unexpectedly.** PR 3 paid-only — a cold-visit wallet is `balance=0` and 402 is the correct response. To exercise generate paths locally you must dev-top-up first (see below). If you topped up and *still* get 402 on a second job, the previous job's refund probably didn't fire — check `/tmp/dripv2-dev.log` for the matching `wallet_refunded` line.
+
+## Manual dev top-up (PR 3+)
+
+Because MVP is paid-only and there's no purchase flow yet, the only way to exercise the generate path locally is to top up the wallet directly via Prisma. Use **upsert** so the snippet works for both fresh and existing wallets, and write a matching ledger entry so audits stay coherent:
+
+```js
+node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{
+  const sid='<sessionId from cookie jar>';
+  const u=await p.user.findUnique({where:{sessionId:sid}});
+  if(!u){console.error('no user for sid');process.exit(1);}
+  const N=1; // top-up amount
+  await p.entitlementWallet.upsert({
+    where: {userId:u.id},
+    update:{balance:{increment:N}},
+    create:{userId:u.id,balance:N},
+  });
+  await p.jobLedgerEntry.create({
+    data:{userId:u.id,type:'grant',amount:N,reason:'dev_topup',jobId:null},
+  });
+  console.log('topped up',u.id,'+'+N);
+  await p.\$disconnect();
+})()"
+```
+
+Use `reason:'dev_topup'` (NOT `'trial'`) so production audits can distinguish.
+
+## Live Seedance validation (PR 3+)
+
+When you have an `ARK_API_KEY`:
+
+1. Set the key in `.env` (do NOT log it). Restart `pnpm dev` so the next-server reads the new env.
+2. Verify the key is loaded: `curl -sS http://localhost:3000/api/jobs -X POST` (no body, will 400) and confirm the next request you actually fire goes through `submitJob` (not the missing_api_key short-circuit).
+3. Dev-top-up the wallet to 1 (snippet above).
+4. From `/create`, upload a small portrait PNG, pick a preset, tap Generate.
+5. Watch `/tmp/dripv2-dev.log` for the FSM transitions: `queued → uploading → submitted → processing → completed`. Each is its own structured `job_transition` line.
+6. The `/jobs/[id]` page should land on the completed view with a playable video URL.
+7. Verify the ledger has one `debit(generation)` row and **no** `refund` row (happy path).
+
+For the negative-half (provider 4xx must NOT refund), a synthetic test is to upload an obviously-out-of-distribution image (e.g. a blank white PNG) and confirm: `errorCode` starts with `http_4` (or a normalized provider-rejection code), the job ends `failed`, the ledger has the `debit` row but **no** `refund` row, and the wallet stays at 0. If a 4xx ever produces a refund row, `isRefundableErrorCode` is wrong.
