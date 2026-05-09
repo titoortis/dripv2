@@ -46,15 +46,28 @@ Project ID, repo, branch, auto-deploy, preview, alias preservation: all six requ
 
 ## Live validation
 
-This very PR (`devin/1778321936-vercel-git-integration` → `main`) is the validation. Pushing the branch and opening the PR is the first GitHub event the linked project will see. Expected behavior, in order:
+This very PR (`devin/1778321936-vercel-git-integration` → `main`) is the validation. Pushing the branch and opening the PR is the first GitHub event the linked project will see. Observed sequence after the push (commit `f71ed64`, 2026-05-09 10:20 UTC):
 
-1. GitHub push event fires the Vercel GitHub App webhook.
-2. Vercel creates a **preview** deployment for the branch (because the branch ≠ `main`).
-3. A "Vercel" status check appears on the PR with **Inspect** + **Visit Preview** links.
-4. A Vercel bot comment is posted on the PR (`gitComments.onPullRequest: true`).
-5. When the PR is later merged to `main`, a **production** deployment is created automatically and `drip-silk.vercel.app` auto-promotes to it (`createDeployments: enabled` + `productionBranch: main`).
+| Expected | Observed |
+|---|---|
+| Vercel GitHub App fires on push | ✓ — first `source: git` deployment ever recorded on this project |
+| Preview deployment created (target ≠ production) | ✓ — `dpl` for SHA `f71ed6418`, ref `devin/1778321936-vercel-git-integration`, target `null` (= preview), state `READY` |
+| `Vercel` status check appears on the PR | ✓ — check `Vercel`, status `success`, "Deployment has completed", inspect at https://vercel.com/titoortis011-2009s-projects/drip/4bNVsv4F2fPrXxrbVMmgLGPf1S7A |
+| `Vercel Preview Comments` check appears | ✓ — status `success` |
+| Vercel bot comment with Preview URL on PR | ✓ — posted by `vercel[bot]` at 2026-05-09 10:21 UTC, includes branch-aliased preview URL |
+| Preview URL serves the branch's content | ✓ — `https://drip-git-devin-1778321936-ve-371864-titoortis011-2009s-projects.vercel.app/` returns HTTP 200, body contains `Featured preset` and `Iron Hero` (current main + this PR's added doc), `x-robots-tag: noindex` (correct preview behavior) |
+| `drip-silk.vercel.app` alias not disturbed | ✓ — still points at `dpl_4PLwddVWyxod9E9NSvDtumVNVed3`, same `deploymentId` and `createdAt` as before the link call |
+| Project count still 1 | ✓ — only `prj_04xCYrqvfbls9boyJG4eAzEoNihG` exists |
 
-If any of those signals are missing on this PR, the integration is half-wired and the verdict downgrades to "not ready". The session will append the live observation to the PR comments once the push lands.
+The crucial signal is the deployment record returned by `GET /v6/deployments?target=preview&projectId=…&limit=4`:
+
+```
+2026-05-09T10:20:48Z   READY   target=preview   source=git   sha=f71ed6418   ref=devin/1778321936-vercel-git-integration   url=drip-8yv85y9cp-titoortis011-2009s-projects.vercel.app
+```
+
+`source: "git"` — not `"cli"`. This is the **first** non-CLI deployment in the project's entire history (compare to the 6 prior `source: "cli"` deployments inherited from pre-link). The GitHub App webhook is the only thing that produces `source: "git"`, so this is direct evidence the integration is live, not just configured.
+
+Production-side validation (the second half — merging to `main` triggering an auto prod deployment) cannot be performed in-session without merging this PR. It's expected to follow the same path: GitHub push to `main` → Vercel webhook → new deployment with `target: "production"` and `source: "git"` → alias auto-promotion. PR review checklist includes this step.
 
 ## Blockers
 
