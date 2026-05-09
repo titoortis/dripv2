@@ -1,6 +1,6 @@
 ---
 name: testing-dripv2
-description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, the entitlement wallet (debit / refund / 402 / out-of-credits UI), or the homepage preset-launcher overlay (PR #15+). PR 3+ also covers live Seedance validation when ARK_API_KEY is provided. Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
+description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, the entitlement wallet (debit / refund / 402 / out-of-credits UI), or the homepage preset-launcher overlay (PR #15+ / PR #19+). PR 3+ also covers live Seedance validation when ARK_API_KEY is provided. Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
 ---
 
 # Testing dripv2
@@ -11,7 +11,7 @@ dripv2 is a Next.js 14 app that submits image-to-video jobs to BytePlus Seedance
 
 Use this skill for changes that touch:
 
-- Landing page (`src/app/page.tsx`) — anything that changes the CTA, hero, or removes the public prompt input. **PR #15** added a `<FeaturedPresetSection />` between hero and testimonial that opens a launcher overlay on `/` instead of routing to `/create` — see the dedicated section below.
+- Landing page (`src/app/page.tsx`) — anything that changes the CTA, hero, or removes the public prompt input. **PR #15** added a `<FeaturedPresetSection />` between hero and testimonial that opens a launcher overlay on `/` instead of routing to `/create`. **PR #19** changed that section's data source from `useEffect → fetch('/api/presets')` to a synchronous static derivation via `src/lib/presets-static.ts` — see the dedicated section below.
 - Create flow (`src/app/create/page.tsx`, `src/components/UploadPad.tsx`, `src/components/PresetCard.tsx`, `src/components/PresetSheet.tsx`).
 - Homepage launcher overlay (`src/components/PresetLauncher.tsx`, `FeaturedPresetSection` inside `src/app/page.tsx`).
 - Result/failure UI (`src/app/jobs/[id]/page.tsx` and `friendlyFailure()`).
@@ -28,6 +28,7 @@ Skip recording when the change is provider-shape only (e.g. tweaking `src/lib/se
 
 - **None** for the no-ARK_API_KEY happy path tested below. Local stack is self-contained: SQLite, local-filesystem storage, in-process poller.
 - `ARK_API_KEY` (BytePlus ModelArk) — only needed for live provider testing (PR 3+). Request as a session secret if/when that PR lands.
+- `VERCEL_TOKEN` (session-scope only) — only needed when verifying Vercel deploys for prod-side tests (e.g. PR #18 / PR #19 auto-deploy validation). Request via `request_secret` with `should_save=false` per the operator pattern.
 
 ## Bring up the stack
 
@@ -94,6 +95,7 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
 1. **Landing renders preset-first CTA, no public prompt input.**
    - `curl -sS http://localhost:3000/` and assert: `'Pick a preset' in html`, `'/create'` href present, `0` `<textarea>` elements, **no** Russian `Сделать промпт`.
    - PR 15+: also assert `'Featured preset'`, `'Iron Hero'`, and `'Tap to launch'` appear in the SSR HTML — those are the `<FeaturedPresetSection />` strings. The card opens an in-place overlay; it does NOT use `/create`.
+   - PR 19+: also assert `0` occurrences of `'/api/presets'` in the SSR HTML AND assert `aria-label="Open Iron Hero launcher"` count = 1. Both are post-PR-19 markers — see L7 below for the full decoupling proof.
    - Click the `Pick a preset` button → URL becomes `/create`.
 2. **`/create` cold visit shows OUT OF CREDITS.** After the cold-visit DB wipe above, navigate to `/create`. Banner eyebrow must read `OUT OF CREDITS` in **danger** (red) color and body copy must be exactly `Pricing packs land soon.`. Bottom CTA label must read `Out of credits` and the button must be **disabled**. PR 3 paid-only contract — no trial, ever.
 3. **Friendly failure UI on `/jobs/[id]`.**
@@ -122,9 +124,11 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
     Must contain exactly `[grant(dev_topup), debit(generation), refund(missing_api_key)]` (or `[debit, refund]` if the dev-top-up snippet skipped writing a ledger row — not recommended). **A fresh, browse-only session must have an empty ledger** (zero rows). PR 3 retracted the trial auto-grant, so there is no longer a `grant(trial)` row.
 12. **Schema seams populated (PR 2+).** All `Preset` rows must have `visibility="platform"`, `royaltyBps=0`, `ownerUserId=null`. New `GenerationJob` rows must have `userId` set; `creatorUserId` and `referralCodeId` must be `null` in MVP.
 
-### Homepage launcher (PR #15+)
+### Homepage featured preset & launcher (PR #15+, data path rewritten in PR #19)
 
-The homepage (`/`) now has a `<FeaturedPresetSection />` between hero and testimonial. It fetches `/api/presets`, picks the first row (`iron_hero_v1`, `sortOrder=10`), and renders it as a single big interactive card. Clicking the card opens `<PresetLauncher />` as an overlay on `/` — it does NOT navigate to `/create`. `/create` and the rest of the preset grid are unchanged.
+The homepage (`/`) has a `<FeaturedPresetSection />` between hero and testimonial. **Data path (PR #19+):** the section reads the first preset *synchronously* via `useMemo(() => getStaticPresetSummaries()[0], [])` from `src/lib/presets-static.ts` — a pure derivation over `PRESETS × PROVIDER_VERIFIED_COMBOS × computeCost`. No `useEffect`, no `fetch('/api/presets')`, no loading state. The card body is therefore in the prerendered HTML and renders identically on any deploy shape, including marketing-mode prod where `/api/presets` 500s on Vercel's ephemeral fs.
+
+Clicking the card opens `<PresetLauncher />` as an overlay on `/` — it does NOT navigate to `/create`. In `NEXT_PUBLIC_LAUNCH_MODE=marketing`, the click handler short-circuits to `router.push('/create')` instead, and `/create` renders `<ComingSoon />`. `/create` and the rest of the preset grid are unchanged.
 
 Responsive split (verified during PR #15 testing):
 - **Desktop (≥sm = 640px wide)**: centered modal, framer-motion enter/exit, dimmed backdrop, ESC + backdrop close, body-scroll-locked while open, initial focus on close-X.
@@ -153,6 +157,11 @@ L5. **Marketing-mode short-circuit.** Edit `.env` to `NEXT_PUBLIC_LAUNCH_MODE=ma
 
 L6. **No regression on `/create`.** With `NEXT_PUBLIC_LAUNCH_MODE=full`, visit `/create` directly. UploadPad + DISCOVER PRESETS grid + sticky Generate must render normally. The launcher overlay must NOT be mounted (no duplicate UI, no console errors). Confirms the new component is correctly scoped to `/`.
 
+L7. **Static-derive contract: homepage must NOT depend on `/api/presets` (PR #19+).** Two-part:
+   - **HTML side:** `curl -sS http://localhost:3000/` (or any deployed URL). Assert that the response body contains `Tap to launch` (count ≥ 1), `aria-label="Open Iron Hero launcher"` (count = 1), `2 credits` (count ≥ 1), AND that `/api/presets` count = 0. The card body is baked into the prerendered HTML by `getStaticPresetSummaries()` — if any of these markers are missing, the static helper is broken or the section was unmounted.
+   - **Bundle side:** open Chrome DevTools → Network tab → filter `presets` → hard-reload `/` (`Ctrl+Shift+R`). After network idle, the filter must show **zero** matching rows. This proves no residual `useEffect`-based fetch survives in the client bundle. Even if `/api/presets` itself eventually returns 200, the homepage must remain decoupled — it's a contract, not just a workaround.
+   - This test was the smoking-gun proof for PR #19 on prod. The pre-fix prod HTML had `Tap to launch=0` (card body never painted because `/api/presets` 500'd); the post-fix prod HTML has `Tap to launch=1` plus zero matching network requests.
+
 ## Adversarial framing
 
 For each test, ask: "would the same sequence look identical if the change were broken?" If yes, the test is too weak. The catalogue above is designed so:
@@ -175,6 +184,7 @@ For each test, ask: "would the same sequence look identical if the change were b
 - L4 fails if a future change adds a `references[]` or `secondaryImageId` field to `/api/jobs` without verifying provider support — the structural absence is the contract.
 - L5 fails if the launcher opens in marketing mode (silent activation of a flow the user explicitly disabled).
 - L6 fails if the launcher cross-mounts on `/create` (would manifest as a duplicate hero overlay or a runtime error).
+- L7 fails (HTML side) if `getStaticPresetSummaries()[0]` returned `undefined` or the static helper has a bug — the card body markers (`Tap to launch`, `aria-label="Open Iron Hero launcher"`) would be absent. L7 fails (Bundle side) if a residual `useEffect → fetch('/api/presets')` lived in the client bundle (e.g. partial revert) — the Network filter would show ≥1 matching row.
 
 ## Test artefacts
 
@@ -194,8 +204,9 @@ For each test, ask: "would the same sequence look identical if the change were b
 - **Cold-visit test still shows a non-empty wallet.** Cookie clearing alone won't reset it because the cookie is httpOnly and the previous user's `EntitlementWallet` row still exists keyed by `userId`. Use the DB-wipe pattern at the top of this skill instead.
 - **`POST /api/jobs` returns 402 unexpectedly.** PR 3 paid-only — a cold-visit wallet is `balance=0` and 402 is the correct response. To exercise generate paths locally you must dev-top-up first (see below). If you topped up and *still* get 402 on a second job, the previous job's refund probably didn't fire — check `/tmp/dripv2-dev.log` for the matching `wallet_refunded` line.
 - **`findMany()` on a multi-user DB returns the wrong wallet.** When you ran the curl-based setup AND a browser session, both created a `User` row. `entitlementWallet.findMany()` returns both, and `[0]` may be the wrong one. Always join via `findUnique({where:{id:'<userId from log>'},include:{wallet:true}})` instead.
-- **Chrome resize via `wmctrl -e` is ignored while the window is maximized.** Hit by L5/T12 in PR #15 testing. Workaround: `wmctrl -r "Google Chrome" -b remove,maximized_vert,maximized_horz` first, **then** `wmctrl -r "Google Chrome" -e 0,40,40,430,900` to size to ~430px wide for the mobile bottom-sheet test. Re-maximize with `wmctrl -r "Google Chrome" -b add,maximized_vert,maximized_horz`.
+- **Chrome resize via `wmctrl -e` is unreliable.** Hit by L5/T12 in PR #15 testing AND again during PR #19 mobile testing on prod (asked for 430px wide, got 532px first then collapsed to ~310px on a second attempt). The window-manager interaction with maximized state is fragile. **Recommended path for mobile-viewport testing on a deployed URL: Chrome DevTools Device Mode** (`F12` then `Ctrl+Shift+M`) — it gives you exact viewport dimensions, emulates touch (so click handlers see touch events, not hover), and disables `md:hover:*` Tailwind classes correctly. Reserve `wmctrl` for cases where you specifically need the window itself resized (e.g. interacting with native browser chrome at a small width).
 - **`NEXT_PUBLIC_LAUNCH_MODE` flip requires a dev-server restart.** It's a `NEXT_PUBLIC_*` var, baked into the client bundle at start. Editing `.env` while `pnpm dev` is running has no effect. Always `kill_shell` + restart `pnpm dev` after switching modes for L5.
+- **`/api/presets` may return 500 on marketing-mode Vercel deploys.** Marketing-mode prod has no Postgres provisioned and SQLite at `file:./dev.db` doesn't survive Vercel's ephemeral filesystem. PR #19 decoupled the homepage from this path; the API itself still 500s on prod and is a separate workstream. **Implication for testing:** if you're verifying a deployed change on `drip-silk.vercel.app`, do NOT rely on `/api/presets` — `/create` may be behind `<ComingSoon />` so the `<PresetCard>` grid that still depends on `/api/presets` won't be exercised. Stick to L7 (the HTML+Network decoupling proof) for prod-side verification.
 
 ## Manual dev top-up (PR 3+)
 
