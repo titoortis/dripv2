@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   motion,
@@ -12,6 +12,7 @@ import {
 import { isMarketingMode } from "@/components/ComingSoon";
 import { PresetLauncher } from "@/components/PresetLauncher";
 import { PresetPlaceholder, type PresetSummary } from "@/components/PresetCard";
+import { getStaticPresetSummaries } from "@/lib/presets-static";
 
 const HERO_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
@@ -314,43 +315,34 @@ function PresetDeckMock() {
 /* ----------------------------------------------------- Featured preset */
 
 /**
- * "First preset" surface on the homepage. Fetches `/api/presets` (which is
- * already sorted by `sortOrder` server-side) and renders the first row as a
- * single big interactive card. On desktop the card scales subtly on hover;
- * on mobile the card is tap-affordant (no hover dependency). Clicking opens
- * the Higgs-style `PresetLauncher` overlay over the homepage — we never
- * navigate away.
+ * "First preset" surface on the homepage. Reads the first preset from the
+ * static seed source-of-truth (`getStaticPresetSummaries`) so this section
+ * renders identically on any deploy shape — in particular, marketing-mode
+ * deploys without a provisioned Postgres, where `/api/presets` 500s on
+ * Prisma init. The card is the single big interactive surface for the
+ * featured preset; on desktop it scales subtly on hover, on mobile it is
+ * tap-affordant (no hover dependency). Clicking opens the Higgs-style
+ * `PresetLauncher` overlay over the homepage — we never navigate away.
  *
- * Marketing-mode fallback: if `NEXT_PUBLIC_LAUNCH_MODE=marketing`, the card
- * routes to `/create` instead of opening the launcher (because `/api/jobs`
- * + `/api/uploads` may not be wired in that deploy). `/create` then short-
- * circuits to `<ComingSoon />` — same UX path as the existing "Pick a
- * preset" CTA above.
+ * Marketing-mode fallback: if `NEXT_PUBLIC_LAUNCH_MODE=marketing`, the
+ * card routes to `/create` instead of opening the launcher (because
+ * `/api/jobs` + `/api/uploads` may not be wired in that deploy). `/create`
+ * then short-circuits to `<ComingSoon />` — same UX path as the existing
+ * "Pick a preset" CTA above.
+ *
+ * Data source contract: `getStaticPresetSummaries()` returns the same
+ * `PresetSummary` shape `/api/presets` returns, derived from the same
+ * `PRESETS` constant the seed reads. Live-mode `/create` still queries
+ * the API for any user-customized rows; that path is unchanged.
  */
 function FeaturedPresetSection() {
   const router = useRouter();
-  const [preset, setPreset] = useState<PresetSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/presets", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { presets: PresetSummary[] } | null) => {
-        if (!alive) return;
-        if (j && j.presets[0]) setPreset(j.presets[0]);
-      })
-      .catch(() => {
-        /* swallow; section just renders empty */
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const preset = useMemo<PresetSummary | null>(
+    () => getStaticPresetSummaries()[0] ?? null,
+    [],
+  );
 
   function handleOpen() {
     if (isMarketingMode()) {
@@ -376,9 +368,7 @@ function FeaturedPresetSection() {
           </p>
         </div>
 
-        {loading ? (
-          <FeaturedPresetSkeleton />
-        ) : preset ? (
+        {preset ? (
           <FeaturedPresetCard preset={preset} onOpen={handleOpen} />
         ) : (
           <div className="rounded-3xl border border-white/10 bg-black/40 px-6 py-8 text-sm text-[hsl(0_0%_65%)]">
@@ -466,15 +456,6 @@ function FeaturedPresetCard({
         </div>
       </button>
     </div>
-  );
-}
-
-function FeaturedPresetSkeleton() {
-  return (
-    <div
-      aria-hidden
-      className="aspect-[9/16] w-full max-w-md animate-pulse rounded-3xl bg-white/5 ring-1 ring-white/10"
-    />
   );
 }
 
