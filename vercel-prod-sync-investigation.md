@@ -189,3 +189,96 @@ The other categories from your task list are demonstrably *not* the cause given 
 **One recommended next action:** open the Vercel project for `drip-silk.vercel.app` at https://vercel.com/dashboard, go to **Settings → Git** and verify that (a) the project is connected to `titoortis/dripv2`, (b) the **Production Branch** is set to `main`, and (c) auto-deploys for that branch are **enabled**. If any of those is off, fix it and click **Redeploy** on `main`. The next request to `https://drip-silk.vercel.app/` should then render the PR #15 "Featured preset" card.
 
 If you want me to drive that fix from this session instead (read Vercel state via API, verify the integration, trigger the redeploy, and confirm production updates afterward), I need a Vercel access token — I will request one via the secrets UI on go-ahead, with the standard skip / temp / permanent options.
+
+---
+
+## Post-investigation update — token granted, fix applied, prod now in sync
+
+The user granted a temporary Vercel API token. I confirmed the Vercel-side state programmatically, applied the minimum-action fix (`vercel deploy --prod` from current `main`), and re-verified production. Diagnosis was correct in shape; one detail was sharper than I could see from outside.
+
+### Vercel-side state (programmatically verified, pre-fix)
+
+| Field | Value |
+|---|---|
+| Account | `team_i7VwXEuZ74oWebSMhKu6wBFy` (`titoortis011-2009's projects`, Hobby plan) |
+| Project | `prj_04xCYrqvfbls9boyJG4eAzEoNihG` (name: `drip`) |
+| `link` | **`null`** — never connected to GitHub |
+| `productionBranch` | **`null`** — never set |
+| Total deployments | 6, **all** with `source: "cli"` (none from Git) |
+| Latest production deployment | `dpl_88XLu4Fz2TvwzxjETiBn3XwJj2Tt` (URL `drip-126ep3sv4-titoortis011-2009s-projects.vercel.app`) |
+| Latest production SHA | `fb8ff8f52` on branch `devin/1778182015-neuralyn-landing-prod` (= PR #5 feature-branch tip) |
+| Latest production built at | **2026-05-07 20:48:56 UTC** — note this is *before* PR #5 was merged to main (2026-05-08 09:17 UTC); the deploy was a manual `vercel --prod` from the feature branch, not from main |
+| Aliases pointing at it | `drip-silk.vercel.app`, `drip-titoortis011-2009-titoortis011-2009s-projects.vercel.app`, `drip-titoortis011-2009s-projects.vercel.app` |
+
+The Vercel-API view sharpens the report's hypothesis: the project never had a Git integration. Every deployment was a feature-branch CLI push (4 from `devin/1778182015-neuralyn-landing-prod` = PR #5; 2 from `devin/1778174433-vercel-marketing-deploy` = PR #4). No deployment from `main` has ever existed.
+
+### Side-effect note (recorded for completeness)
+
+`vercel pull --yes` from this clean working tree auto-created a brand-new project `dripv2` (`prj_1pS52R1mzRpWaS0Cy70Hr44XmSwE`) with `link: github:titoortis/dripv2` and `productionBranch: main`. That project had **zero deployments, zero aliases, zero env vars** and would not have served `drip-silk.vercel.app`. I deleted it (`DELETE /v9/projects/prj_1pS52R1mzRpWaS0Cy70Hr44XmSwE` → `204`) and re-pointed `.vercel/project.json` at the existing `drip` project before deploying. The new-project artifact is no longer present in the team.
+
+### Fix applied (minimum-action)
+
+Single command, run from `main` (HEAD `f6936c52b5e892005bb04e59fb936722e1dfb917`):
+
+```
+vercel deploy --prod --yes --token=<TEMP> --scope=team_i7VwXEuZ74oWebSMhKu6wBFy
+```
+
+Build:
+
+```
+Building: Restored build cache from previous deployment (88XLu4Fz2TvwzxjETiBn3XwJj2Tt)
+Building: Detected Next.js version: 14.2.15
+Building: Running "pnpm run build"  (= prisma generate && next build)
+Building: ✓ Compiled successfully
+Building: ✓ Generating static pages (6/6)
+Building: Build Completed in /vercel/output [36s]
+Production: https://drip-qk5z62wyp-titoortis011-2009s-projects.vercel.app [48s]
+Aliased: https://drip-silk.vercel.app [48s]
+```
+
+### Vercel-side state (post-fix)
+
+| Field | Value |
+|---|---|
+| New deployment | `dpl_4PLwddVWyxod9E9NSvDtumVNVed3` (URL `drip-qk5z62wyp-titoortis011-2009s-projects.vercel.app`) |
+| Inspect URL | `https://vercel.com/titoortis011-2009s-projects/drip/4PLwddVWyxod9E9NSvDtumVNVed3` |
+| New production SHA | `f6936c52b` on branch `main` (= GitHub `f6936c52b5e892005bb04e59fb936722e1dfb917`, PR #16 merge) |
+| Built at | **2026-05-09 10:08:42 UTC** |
+| Source | `cli` (still — Git integration not added in this session; see "Long-term fix" below) |
+| Aliases now pointing at it | `drip-silk.vercel.app` (and 2 others) — auto-promoted by `--prod` |
+
+### Production HTML re-verification (post-fix)
+
+Markers re-counted in `curl https://drip-silk.vercel.app/`:
+
+| Marker | Source | Pre-fix | Post-fix |
+|---|---|---|---|
+| `Featured preset` | PR #15 (`<FeaturedPresetSection />` heading) | 0 | **1** |
+| `Start with` | PR #15 (heading copy: *"Start with Iron Hero"*) | 0 | **1** |
+| `Iron Hero` | already in PR #5 deck mock + new in PR #15 | 1 | **1** |
+| `Now powered by Seedance` | PR #5 nav pill (still on main) | 1 | 1 |
+| `Your Photo` | PR #5 hero (still on main) | 1 | 1 |
+| `Сделать промпт` | PR #5 `PromptComposer` (REMOVED in PR #6) | 1 | **0** |
+| `Опиши идею ролика` | PR #5 `PromptComposer` placeholder | 1 | **0** |
+
+`/` chunk hashes flipped from `app/page-99574894dc0de368.js` (PR #5 era) to `app/page-21fb8272f3d5a532.js` (current main). `etag` flipped from `0632e13333f136797bc1d6ab4e42d201` to `6a009560e2499d0bb4861805e5a26b76`. `x-vercel-cache: HIT, age: 133386` flipped to `x-vercel-cache: PRERENDER, age: 0`. `/create` still renders `<ComingSoon />` (`Drip · early access`, `Cinematic generation lands soon`) — confirming `NEXT_PUBLIC_LAUNCH_MODE=marketing` is still active, as expected.
+
+### Side finding still standing
+
+`/api/presets` returns **HTTP 500** on production. Not a sync issue. Consequence on the deployed homepage: the new `<FeaturedPresetSection />` SSR-renders its heading and skeleton, but the interactive `Tap to launch` chip + the live `Iron Hero` card body never render because the client-side `useEffect(() => fetch('/api/presets'))` resolves to error. Confirmed by `Tap to launch` count = 0 in the deployed HTML (chip is inside the client-rendered card; only present when the API succeeds). Likely cause given the deployed env (`DATABASE_URL=file:/tmp/dev.db`, `STORAGE_DRIVER=local`, `STORAGE_LOCAL_DIR=/tmp/uploads`): Prisma client tries to talk to a SQLite file under `/tmp` on Vercel's ephemeral, read-only-by-default filesystem and fails. **This is a runtime problem of marketing-mode-on-Vercel + the new SSG-vs-API-route call introduced by PR #15, not part of the deploy-sync investigation.** Best long-term fix is README's **Phase 2** (Postgres + S3 + `ARK_API_KEY`); short-term fix would be making `/api/presets` short-circuit when `NEXT_PUBLIC_LAUNCH_MODE=marketing` (or making `<FeaturedPresetSection />` skip the fetch in marketing mode and use the static landing card instead). Out of scope for this PR — flagging only.
+
+### Final verdict
+
+**Production is now in sync with `main` at the SHA level.** `f6936c52b` on the `drip-silk.vercel.app` alias matches `f6936c5` on GitHub `main`. The PR #15 SSR surface is live; only the API-driven part of it does not render because of an unrelated runtime issue.
+
+### Long-term fix (still pending — manual dashboard step)
+
+This session installed a one-shot CLI deploy. It did **not** wire Git auto-deploy. Next merge to `main` will *not* automatically reach production. The simplest one-time fix:
+
+1. Open https://vercel.com/titoortis011-2009s-projects/drip/settings/git.
+2. Click **Connect Git Repository** → **GitHub** → choose `titoortis/dripv2`.
+3. Set **Production Branch** to `main`. Leave **Auto Deploy** on.
+4. After this is set, every merge to `main` will create a production deployment (and every PR push will create a preview deployment — which is the missing signal that's been confusing the PR review experience).
+
+Alternatively, if the CLI-only flow is the intended workflow (consistent with how PRs #4 and #5 originally deployed), keep it as-is and run `vercel --prod` after each merge. Either is consistent; what was *not* consistent was the half-state we found at the start of this investigation.
