@@ -1,6 +1,6 @@
 ---
 name: testing-dripv2
-description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, or the entitlement wallet (debit / refund / 402 / out-of-credits UI). PR 3+ also covers live Seedance validation when ARK_API_KEY is provided. Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
+description: End-to-end test the dripv2 upload → preset → generate → /jobs/[id] flow locally without any provider credentials. Use when verifying landing/CTA changes, friendly failure UI, FSM transitions, structured logs, rate limits, the entitlement wallet (debit / refund / 402 / out-of-credits UI), or the homepage preset-launcher overlay (PR #15+). PR 3+ also covers live Seedance validation when ARK_API_KEY is provided. Skip when the change is provider-shape only (no UI, no FSM, no rate-limit, no wallet) — a unit/typecheck pass is enough there.
 ---
 
 # Testing dripv2
@@ -11,8 +11,9 @@ dripv2 is a Next.js 14 app that submits image-to-video jobs to BytePlus Seedance
 
 Use this skill for changes that touch:
 
-- Landing page (`src/app/page.tsx`) — anything that changes the CTA, hero, or removes the public prompt input.
+- Landing page (`src/app/page.tsx`) — anything that changes the CTA, hero, or removes the public prompt input. **PR #15** added a `<FeaturedPresetSection />` between hero and testimonial that opens a launcher overlay on `/` instead of routing to `/create` — see the dedicated section below.
 - Create flow (`src/app/create/page.tsx`, `src/components/UploadPad.tsx`, `src/components/PresetCard.tsx`, `src/components/PresetSheet.tsx`).
+- Homepage launcher overlay (`src/components/PresetLauncher.tsx`, `FeaturedPresetSection` inside `src/app/page.tsx`).
 - Result/failure UI (`src/app/jobs/[id]/page.tsx` and `friendlyFailure()`).
 - FSM runner (`src/lib/server/jobs/runner.ts`, `src/lib/server/jobs/poller.ts`).
 - Structured logs (`src/lib/server/logger.ts`).
@@ -35,6 +36,8 @@ Skip recording when the change is provider-shape only (e.g. tweaking `src/lib/se
 test -f .env || cp .env.example .env
 # Sanity check: ARK_API_KEY MUST be empty for this skill's tests
 grep '^ARK_API_KEY=' .env  # should print 'ARK_API_KEY=' with nothing after
+# Sanity check: marketing-mode flips routing for `/`, `/create`, `/jobs/[id]`, `/history`
+grep '^NEXT_PUBLIC_LAUNCH_MODE=' .env  # should print 'NEXT_PUBLIC_LAUNCH_MODE=full' for launcher tests
 
 pnpm install --frozen-lockfile          # idempotent
 pnpm prisma generate                    # idempotent
@@ -69,7 +72,7 @@ node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient(
 })()"
 ```
 
-Then reload `/create` — the page calls `GET /api/wallet`, which mints a fresh `User` and an `EntitlementWallet` at `balance=0`. The new user is keyed by whatever `dripv2_sid` cookie the server set previously; what matters is that there is no `EntitlementWallet` row yet (the wipe handles that).
+Then reload `/create` (or `/`) — the next API call mints a fresh `User` and an `EntitlementWallet` at `balance=0`. The new user is keyed by whatever `dripv2_sid` cookie the server set previously; what matters is that there is no `EntitlementWallet` row yet (the wipe handles that).
 
 ## Expected FSM behavior with no ARK_API_KEY
 
@@ -90,6 +93,7 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
 
 1. **Landing renders preset-first CTA, no public prompt input.**
    - `curl -sS http://localhost:3000/` and assert: `'Pick a preset' in html`, `'/create'` href present, `0` `<textarea>` elements, **no** Russian `Сделать промпт`.
+   - PR 15+: also assert `'Featured preset'`, `'Iron Hero'`, and `'Tap to launch'` appear in the SSR HTML — those are the `<FeaturedPresetSection />` strings. The card opens an in-place overlay; it does NOT use `/create`.
    - Click the `Pick a preset` button → URL becomes `/create`.
 2. **`/create` cold visit shows OUT OF CREDITS.** After the cold-visit DB wipe above, navigate to `/create`. Banner eyebrow must read `OUT OF CREDITS` in **danger** (red) color and body copy must be exactly `Pricing packs land soon.`. Bottom CTA label must read `Out of credits` and the button must be **disabled**. PR 3 paid-only contract — no trial, ever.
 3. **Friendly failure UI on `/jobs/[id]`.**
@@ -118,11 +122,42 @@ If you see a `queued → uploading` transition followed by a `submitted` line, t
     Must contain exactly `[grant(dev_topup), debit(generation), refund(missing_api_key)]` (or `[debit, refund]` if the dev-top-up snippet skipped writing a ledger row — not recommended). **A fresh, browse-only session must have an empty ledger** (zero rows). PR 3 retracted the trial auto-grant, so there is no longer a `grant(trial)` row.
 12. **Schema seams populated (PR 2+).** All `Preset` rows must have `visibility="platform"`, `royaltyBps=0`, `ownerUserId=null`. New `GenerationJob` rows must have `userId` set; `creatorUserId` and `referralCodeId` must be `null` in MVP.
 
+### Homepage launcher (PR #15+)
+
+The homepage (`/`) now has a `<FeaturedPresetSection />` between hero and testimonial. It fetches `/api/presets`, picks the first row (`iron_hero_v1`, `sortOrder=10`), and renders it as a single big interactive card. Clicking the card opens `<PresetLauncher />` as an overlay on `/` — it does NOT navigate to `/create`. `/create` and the rest of the preset grid are unchanged.
+
+Responsive split (verified during PR #15 testing):
+- **Desktop (≥sm = 640px wide)**: centered modal, framer-motion enter/exit, dimmed backdrop, ESC + backdrop close, body-scroll-locked while open, initial focus on close-X.
+- **Mobile (<sm)**: bottom-anchored sheet, slide-up animation, content scrolls inside the sheet, same close behavior.
+
+Launch surface inside the overlay:
+- **Refs block**: 2 visible slots in a side-by-side grid. Slot 1 ("Character sheet", required) uploads to `/api/uploads`, the resulting `sourceImageId` is sent to `/api/jobs`. **Slot 2 ("Style or pet ref", optional) uploads to `/api/uploads` for visual parity but is NOT forwarded to `/api/jobs`** because the endpoint takes a single `sourceImageId` today. The helper text under the grid is honest about the gap.
+- **Settings block**: aspect (display-only chip from `preset.aspectRatio`), length + quality (pills sourced from `preset.availableCombos`). Today's `PROVIDER_VERIFIED_COMBOS = [{720p × 5s}]` means each row shows a single pill. This is operator-accepted.
+- **Footer**: pricing chip (`chosenCombo.creditsCost`), disabled-until-min-inputs, out-of-credits state via `/api/wallet`, navigates to `/jobs/[id]` on success. Identical wire-format to `/create`.
+
+Launcher-specific test recipe (in addition to T1 above):
+
+L1. **Overlay opens in place, not a navigation.** Cold-visit `/`. Scroll to FeaturedPresetSection. Click the card. URL must stay `/`. Overlay panel appears with the same gradient as the card, "Seedance 2.0 · Preset" eyebrow, "Iron Hero" title, refs grid (2 empty slots), settings pills, footer with pricing chip + disabled CTA + helper text. Press ESC → overlay closes. Click backdrop → overlay closes. Body scroll locked while overlay is open (try wheel-scroll on backdrop; page must not move).
+
+L2. **Cold-visit Generate state.** Overlay open, balance=0. Upload `/tmp/ref-char.png` (or any small PNG) to slot 1. Generate button must read `Out of credits` and stay disabled. Helper text reflects the credit state.
+
+L3. **Active Generate after dev-top-up.** Dev-top-up to 5 credits via the snippet at the bottom of this file. Reload `/`. Re-open overlay (the launcher fetches `/api/wallet` lazily on open). Upload slot 1. Generate button must read `Generate · 2 credits` and be active.
+
+L4. **Slot 2 honesty.** Upload slot 2 with a different PNG. The thumbnail must render. Click Generate. Then assert:
+    ```js
+    node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const j=(await p.generationJob.findMany({orderBy:{createdAt:'desc'},take:1}))[0];const imgs=await p.sourceImage.findMany({orderBy:{createdAt:'desc'},take:5,select:{id:true}});console.log('jobs.sourceImageId:',j.sourceImageId);console.log('all recent uploads:',imgs.map(i=>i.id));await p.\$disconnect();})()"
+    ```
+    Two recent uploads (slot 1 + slot 2), but only ONE is referenced as `jobs.sourceImageId`. The schema has no `secondaryImageId` / `references[]` field. The honesty contract is structural, not just copy.
+
+L5. **Marketing-mode short-circuit.** Edit `.env` to `NEXT_PUBLIC_LAUNCH_MODE=marketing`. Restart `pnpm dev` (the var is baked into the client bundle at start). Reload `/`. Click featured card. URL must navigate to `/create`. `/create` must render the `<ComingSoon />` placeholder. Overlay must NOT open. Restore `NEXT_PUBLIC_LAUNCH_MODE=full` and restart `pnpm dev` after this test.
+
+L6. **No regression on `/create`.** With `NEXT_PUBLIC_LAUNCH_MODE=full`, visit `/create` directly. UploadPad + DISCOVER PRESETS grid + sticky Generate must render normally. The launcher overlay must NOT be mounted (no duplicate UI, no console errors). Confirms the new component is correctly scoped to `/`.
+
 ## Adversarial framing
 
 For each test, ask: "would the same sequence look identical if the change were broken?" If yes, the test is too weak. The catalogue above is designed so:
 
-- T1 fails (textarea reappears, RU button surfaces) if `PromptComposer` is re-mounted.
+- T1 fails (textarea reappears, RU button surfaces, Featured preset strings absent in HTML) if `PromptComposer` is re-mounted or `<FeaturedPresetSection />` is unmounted.
 - T2 fails if the danger branch of `WalletBanner` (or the disabled-Generate-when-balance=0 wiring) is missing.
 - T3 fails if the page renders the raw `errorReason` from the DB instead of the `friendlyFailure()` output.
 - T4 fails if `runner.ts` doesn't call `maybeRefundJob` from the `missing_api_key` short-circuit — banner stays red.
@@ -134,6 +169,12 @@ For each test, ask: "would the same sequence look identical if the change were b
 - T10 fails if the entitlement gate in `/api/jobs` is removed.
 - T11 fails if any of `grant`/`debit`/`refund` writes are missing or duplicated.
 - T12 fails if the schema seams aren't populated (or `userId` isn't set on new jobs).
+- L1 fails if the click handler navigates instead of opening the overlay, if ESC/backdrop close is missing, or if body scroll is not locked.
+- L2 fails if Generate isn't disabled when balance=0 (silent over-promise to a session that will then 402).
+- L3 fails if the launcher caches a stale balance and ignores fresh wallet state on re-open.
+- L4 fails if a future change adds a `references[]` or `secondaryImageId` field to `/api/jobs` without verifying provider support — the structural absence is the contract.
+- L5 fails if the launcher opens in marketing mode (silent activation of a flow the user explicitly disabled).
+- L6 fails if the launcher cross-mounts on `/create` (would manifest as a duplicate hero overlay or a runtime error).
 
 ## Test artefacts
 
@@ -144,7 +185,7 @@ For each test, ask: "would the same sequence look identical if the change were b
 
 ## Common pitfalls
 
-- **Chrome console reports `Chrome is not in the foreground` after a screenshot.** Click into the page once before the next `browser_console` call, or skip console and use `curl` + `python3` for DOM substring assertions.
+- **Chrome console reports `Chrome is not in the foreground` after a screenshot.** Click into the page once before the next `browser_console` call, or skip console and use `curl` + `python3` for DOM substring assertions. For the launcher, the `/api/jobs` POST body shape is structurally guaranteed by `PresetLauncher.tsx` itself (slot 2's id is never in scope for the submit closure) — Prisma row inspection is a stronger proof than fetch interception.
 - **`/jobs/[id]` curl returns the loading state.** It's a client component. Use a screenshot for visual assertions.
 - **Test PNG too small to upload?** No: `MAX_BYTES=12 MB`, `MIN` is effectively 1 byte. A 256×256 solid-colour PNG (~1 KB) is fine. Generate with PIL: `Image.new('RGB',(256,256),'#222').save('/tmp/test.png')`.
 - **`ARK_API_KEY` accidentally set in shell env?** It overrides `.env`. Run `unset ARK_API_KEY` and restart `pnpm dev`.
@@ -152,6 +193,9 @@ For each test, ask: "would the same sequence look identical if the change were b
 - **Wallet still 0 after expected refund.** Check that the failure path you're exercising has a refundable `errorCode`. Refundable: `missing_api_key`, `wall_clock_timeout`, `succeeded_without_url`, `download_failed`, `internal_error`, anything `http_5*`. **Not refundable:** provider 4xx (bad photo, user fault) and `cancelled`.
 - **Cold-visit test still shows a non-empty wallet.** Cookie clearing alone won't reset it because the cookie is httpOnly and the previous user's `EntitlementWallet` row still exists keyed by `userId`. Use the DB-wipe pattern at the top of this skill instead.
 - **`POST /api/jobs` returns 402 unexpectedly.** PR 3 paid-only — a cold-visit wallet is `balance=0` and 402 is the correct response. To exercise generate paths locally you must dev-top-up first (see below). If you topped up and *still* get 402 on a second job, the previous job's refund probably didn't fire — check `/tmp/dripv2-dev.log` for the matching `wallet_refunded` line.
+- **`findMany()` on a multi-user DB returns the wrong wallet.** When you ran the curl-based setup AND a browser session, both created a `User` row. `entitlementWallet.findMany()` returns both, and `[0]` may be the wrong one. Always join via `findUnique({where:{id:'<userId from log>'},include:{wallet:true}})` instead.
+- **Chrome resize via `wmctrl -e` is ignored while the window is maximized.** Hit by L5/T12 in PR #15 testing. Workaround: `wmctrl -r "Google Chrome" -b remove,maximized_vert,maximized_horz` first, **then** `wmctrl -r "Google Chrome" -e 0,40,40,430,900` to size to ~430px wide for the mobile bottom-sheet test. Re-maximize with `wmctrl -r "Google Chrome" -b add,maximized_vert,maximized_horz`.
+- **`NEXT_PUBLIC_LAUNCH_MODE` flip requires a dev-server restart.** It's a `NEXT_PUBLIC_*` var, baked into the client bundle at start. Editing `.env` while `pnpm dev` is running has no effect. Always `kill_shell` + restart `pnpm dev` after switching modes for L5.
 
 ## Manual dev top-up (PR 3+)
 
@@ -161,33 +205,11 @@ Because MVP is paid-only and there's no purchase flow yet, the only way to exerc
 node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{
   const sid='<sessionId from cookie jar>';
   const u=await p.user.findUnique({where:{sessionId:sid}});
-  if(!u){console.error('no user for sid');process.exit(1);}
-  const N=1; // top-up amount
-  await p.entitlementWallet.upsert({
-    where: {userId:u.id},
-    update:{balance:{increment:N}},
-    create:{userId:u.id,balance:N},
-  });
-  await p.jobLedgerEntry.create({
-    data:{userId:u.id,type:'grant',amount:N,reason:'dev_topup',jobId:null},
-  });
-  console.log('topped up',u.id,'+'+N);
+  // ... or: const u=await p.user.findFirst({orderBy:{createdAt:'desc'}});
+  await p.entitlementWallet.upsert({where:{userId:u.id},update:{balance:5},create:{userId:u.id,balance:5}});
+  await p.jobLedgerEntry.create({data:{userId:u.id,type:'grant',amount:5,reason:'dev_topup'}});
   await p.\$disconnect();
 })()"
 ```
 
-Use `reason:'dev_topup'` (NOT `'trial'`) so production audits can distinguish.
-
-## Live Seedance validation (PR 3+)
-
-When you have an `ARK_API_KEY`:
-
-1. Set the key in `.env` (do NOT log it). Restart `pnpm dev` so the next-server reads the new env.
-2. Verify the key is loaded: `curl -sS http://localhost:3000/api/jobs -X POST` (no body, will 400) and confirm the next request you actually fire goes through `submitJob` (not the missing_api_key short-circuit).
-3. Dev-top-up the wallet to 1 (snippet above).
-4. From `/create`, upload a small portrait PNG, pick a preset, tap Generate.
-5. Watch `/tmp/dripv2-dev.log` for the FSM transitions: `queued → uploading → submitted → processing → completed`. Each is its own structured `job_transition` line.
-6. The `/jobs/[id]` page should land on the completed view with a playable video URL.
-7. Verify the ledger has one `debit(generation)` row and **no** `refund` row (happy path).
-
-For the negative-half (provider 4xx must NOT refund), a synthetic test is to upload an obviously-out-of-distribution image (e.g. a blank white PNG) and confirm: `errorCode` starts with `http_4` (or a normalized provider-rejection code), the job ends `failed`, the ledger has the `debit` row but **no** `refund` row, and the wallet stays at 0. If a 4xx ever produces a refund row, `isRefundableErrorCode` is wrong.
+Then reload the page so `/api/wallet` returns the new balance to the client.
