@@ -13,9 +13,20 @@ export type UploadedSource = {
 export function UploadPad({
   value,
   onChange,
+  disabled = false,
+  disabledMessage,
 }: {
   value: UploadedSource | null;
   onChange: (next: UploadedSource | null) => void;
+  /**
+   * When true, the pad is non-interactive: clicks no-op, the file picker
+   * cannot open, and `disabledMessage` (if provided) replaces the helper
+   * line. Used by `/create` in marketing mode where `/api/uploads` isn't
+   * provisioned, so we surface the unavailability honestly instead of
+   * letting the user upload into a 500.
+   */
+  disabled?: boolean;
+  disabledMessage?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -61,10 +72,15 @@ export function UploadPad({
     <div className="w-full">
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => {
+          if (disabled) return;
+          inputRef.current?.click();
+        }}
+        disabled={disabled}
         className={cn(
           "relative flex h-[260px] w-full items-center justify-center overflow-hidden rounded-3xl bg-ink-800 ring-soft sm:h-[320px]",
-          "transition hover:bg-ink-700",
+          !disabled && "transition hover:bg-ink-700",
+          disabled && "cursor-not-allowed opacity-70",
           busy && "opacity-80",
         )}
         aria-label="Upload your photo"
@@ -94,6 +110,7 @@ export function UploadPad({
         type="file"
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
+        disabled={disabled}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) handleFile(f);
@@ -101,7 +118,11 @@ export function UploadPad({
       />
 
       <div className="mt-2 flex items-center justify-between text-xs">
-        {error ? (
+        {disabled ? (
+          <span className="text-ink-400">
+            {disabledMessage ?? "Photo upload is unavailable right now."}
+          </span>
+        ) : error ? (
           <span className="text-danger">{error}</span>
         ) : hasMedia ? (
           <button
