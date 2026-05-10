@@ -211,16 +211,48 @@ function CreatePageInner() {
       <div className="px-safe pb-[120px] pt-1.5">
         <h1 className="heading-display mb-2 text-[15px] tracking-tight text-ink-50">Create video</h1>
         {marketingMode ? <MarketingModeBanner /> : <WalletBanner balance={balance} />}
-        <UploadPad
-          value={source}
-          onChange={setSource}
-          disabled={marketingMode}
-          disabledMessage={
-            marketingMode
-              ? "Photo upload arrives with the next drop — browse the preset library below."
-              : undefined
-          }
-        />
+
+        <section aria-labelledby="references-heading">
+          <div className="mb-2">
+            <h2
+              id="references-heading"
+              className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200"
+            >
+              References
+            </h2>
+            <p className="text-[10.5px] leading-snug text-ink-400">
+              Primary reference becomes your character. Secondary slot lands with character
+              support — adds style or composition guidance.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <UploadPad
+              value={source}
+              onChange={setSource}
+              label="Primary"
+              helperIdle="Character sheet works best."
+              disabled={marketingMode}
+              disabledMessage={
+                marketingMode
+                  ? "Upload arrives with the next drop."
+                  : undefined
+              }
+            />
+            {/* PR #24: Secondary slot is intentionally non-interactive today.
+                It surfaces the upcoming-capability shape of the product (two
+                clear slots — primary + optional secondary) without collecting
+                a file we'd have no use for. Threading it to `/api/jobs` and
+                the Seedance wire body is character-system work and explicitly
+                deferred. No state, no upload, no API call. */}
+            <UploadPad
+              value={null}
+              onChange={() => {}}
+              label="Optional"
+              comingSoon
+              comingSoonMessage="Pet or style ref · arrives with character support."
+            />
+          </div>
+        </section>
 
         <section className="mt-4">
           <div className="mb-2 flex items-end justify-between">
