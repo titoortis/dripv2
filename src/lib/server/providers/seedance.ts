@@ -8,6 +8,10 @@ import { env } from "../env";
 //   POST {ARK_BASE_URL}/contents/generations/tasks
 //   GET  {ARK_BASE_URL}/contents/generations/tasks/{task_id}
 //
+// Files API (OpenAI-compatible):
+//   POST {ARK_BASE_URL}/files        (multipart/form-data)
+//   GET  {ARK_BASE_URL}/files/{id}   (status polling)
+//
 // Auth: Authorization: Bearer ARK_API_KEY
 // ---------------------------------------------------------------------------
 
@@ -76,11 +80,52 @@ export type CreateImageToVideoInput = {
   seed?: number;
 };
 
+// ---------------------------------------------------------------------------
+// Files API types — for provider-backed asset spike (Phase 0).
+// ---------------------------------------------------------------------------
+
+export type ProviderFileStatus = "processing" | "active" | "failed" | "deleted";
+
+const FileUploadResponseSchema = z.object({
+  id: z.string(),
+  object: z.literal("file").optional(),
+  purpose: z.string().optional(),
+  filename: z.string().optional(),
+  bytes: z.number().optional(),
+  mime_type: z.string().optional(),
+  created_at: z.number().optional(),
+  expire_at: z.number().optional(),
+  status: z.string().optional(),
+});
+
+export type ProviderFile = z.infer<typeof FileUploadResponseSchema>;
+
+const FileGetResponseSchema = z.object({
+  id: z.string(),
+  object: z.literal("file").optional(),
+  purpose: z.string().optional(),
+  filename: z.string().optional(),
+  bytes: z.number().optional(),
+  mime_type: z.string().optional(),
+  created_at: z.number().optional(),
+  expire_at: z.number().optional(),
+  status: z.string(),
+});
+
+export type ProviderFileInfo = z.infer<typeof FileGetResponseSchema>;
+
 export type SeedanceClient = {
   createImageToVideoTask(input: CreateImageToVideoInput): Promise<{ providerTaskId: string }>;
   getTask(providerTaskId: string): Promise<SeedanceTask>;
   mapStatus(raw: string): ProviderTaskStatus;
   hasCredentials(): boolean;
+
+  /** Upload a file to BytePlus Files API. Returns the provider file ID. */
+  uploadFile(buf: Buffer, filename: string, contentType: string): Promise<ProviderFile>;
+  /** Poll file status. Only files with status "active" can be used in generation. */
+  getFile(fileId: string): Promise<ProviderFileInfo>;
+  /** Map raw file status string to typed enum. */
+  mapFileStatus(raw: string): ProviderFileStatus;
 };
 
 /**
@@ -209,6 +254,84 @@ export const seedance: SeedanceClient = {
 
   hasCredentials() {
     return Boolean(env().ARK_API_KEY);
+  },
+
+  async uploadFile(buf, filename, contentType) {
+    const raw = env().ARK_API_KEY;
+    if (!raw) {
+      throw new SeedanceError(
+        "ARK_API_KEY is not configured. Provider calls are blocked.",
+        0,
+        "missing_api_key",
+      );
+    }
+    const key = normalizeApiKey(raw);
+
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(buf)], { type: contentType }), filename);
+    form.append("purpose", "user_data");
+
+    const res = await fetch(endpoint("/files"), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new SeedanceError(
+        `Files API upload failed: HTTP ${res.status} ${text.slice(0, 400)}`,
+        res.status,
+        undefined,
+        safeJson(text),
+      );
+    }
+
+    const parsed = FileUploadResponseSchema.safeParse(safeJson(text));
+    if (!parsed.success) {
+      throw new SeedanceError(
+        `Files API upload returned unexpected payload: ${parsed.error.message}`,
+        res.status,
+        undefined,
+        safeJson(text),
+      );
+    }
+    return parsed.data;
+  },
+
+  async getFile(fileId) {
+    const res = await fetch(
+      endpoint(`/files/${encodeURIComponent(fileId)}`),
+      { method: "GET", headers: authHeaders() },
+    );
+    const text = await res.text();
+    if (!res.ok) {
+      throw new SeedanceError(
+        `Files API get-file failed: HTTP ${res.status} ${text.slice(0, 400)}`,
+        res.status,
+        undefined,
+        safeJson(text),
+      );
+    }
+    const parsed = FileGetResponseSchema.safeParse(safeJson(text));
+    if (!parsed.success) {
+      throw new SeedanceError(
+        `Files API get-file returned unexpected payload: ${parsed.error.message}`,
+        res.status,
+        undefined,
+        safeJson(text),
+      );
+    }
+    return parsed.data;
+  },
+
+  mapFileStatus(raw) {
+    const s = raw.toLowerCase();
+    if (["processing", "pending", "uploaded"].includes(s)) return "processing";
+    if (["active", "processed"].includes(s)) return "active";
+    if (["failed", "error"].includes(s)) return "failed";
+    if (["deleted"].includes(s)) return "deleted";
+    return "processing";
   },
 };
 
