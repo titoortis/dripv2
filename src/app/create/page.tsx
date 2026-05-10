@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
-import { ComingSoon, isMarketingMode } from "@/components/ComingSoon";
+import { isMarketingMode } from "@/components/ComingSoon";
 import { PresetCard, type PresetSummary, type AvailableCombo } from "@/components/PresetCard";
 import { PresetSheet } from "@/components/PresetSheet";
 import { UploadPad, type UploadedSource } from "@/components/UploadPad";
+import { getStaticPresetSummaries } from "@/lib/presets-static";
 
 // PR 6 spec rule: never assume product order from the wire. Sort defensively
 // in every UI consumer — this rank table mirrors the seed-side normalization
@@ -20,22 +21,24 @@ function compareResolution(a: string, b: string): number {
 }
 
 export default function CreatePage() {
-  if (isMarketingMode()) {
-    return (
-      <ComingSoon
-        title="Cinematic generation lands soon"
-        subtitle="Upload, presets, and Seedance 2.0 generation are queued behind the rollout. The waitlist opens with the next drop."
-      />
-    );
-  }
   return <CreatePageInner />;
 }
 
 function CreatePageInner() {
   const router = useRouter();
-  const [presets, setPresets] = useState<PresetSummary[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const marketingMode = isMarketingMode();
+  // Static seed is the SSR-safe initial value: same source-of-truth that
+  // populates the DB via `pnpm db:seed`. In marketing mode it's the only
+  // source — `/api/presets` requires a provisioned DB and 500s on prod.
+  // In live mode it's the cushion before the network refresh lands, and
+  // the fallback if the refresh fails. Either way we never flash the
+  // "No presets yet — run pnpm db:seed" developer state to a real user.
+  const initialPresets = useMemo(() => getStaticPresetSummaries(), []);
+  const [presets, setPresets] = useState<PresetSummary[]>(initialPresets);
+  const [presetsLoading, setPresetsLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialPresets[0]?.id ?? null,
+  );
   const [source, setSource] = useState<UploadedSource | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,25 +50,35 @@ function CreatePageInner() {
   const [chosenResolution, setChosenResolution] = useState<string | null>(null);
   const [chosenDuration, setChosenDuration] = useState<number | null>(null);
 
+  // Live preset refresh — best-effort, only in non-marketing mode. If it
+  // fails, we keep the static seed (no empty state, no developer message).
+  // If the live response has a different set of presets, we snap the
+  // selection to the new first preset only when the previously-selected
+  // id is gone from the live set.
   useEffect(() => {
+    if (marketingMode) return;
     let alive = true;
     fetch("/api/presets")
-      .then((r) => r.json())
-      .then((j: { presets: PresetSummary[] }) => {
-        if (!alive) return;
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { presets: PresetSummary[] } | null) => {
+        if (!alive || !j || !Array.isArray(j.presets) || j.presets.length === 0) {
+          return;
+        }
         setPresets(j.presets);
-        if (j.presets[0]) setSelectedId(j.presets[0].id);
+        setSelectedId((prev) =>
+          prev && j.presets.some((p) => p.id === prev) ? prev : j.presets[0]?.id ?? null,
+        );
       })
       .catch(() => {
-        /* swallow; UI shows empty state below */
-      })
-      .finally(() => alive && setPresetsLoading(false));
+        /* swallow; static seed stays in place */
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [marketingMode]);
 
   useEffect(() => {
+    if (marketingMode) return;
     let alive = true;
     fetch("/api/wallet", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -79,7 +92,7 @@ function CreatePageInner() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [marketingMode]);
 
   const selected = useMemo(
     () => presets.find((p) => p.id === selectedId) ?? null,
@@ -153,9 +166,13 @@ function CreatePageInner() {
   const outOfCredits =
     balance !== null && requiredCredits !== null && balance < requiredCredits;
   const canGenerate =
-    Boolean(source?.id && selected?.id && chosenCombo) && !submitting && !outOfCredits;
+    !marketingMode &&
+    Boolean(source?.id && selected?.id && chosenCombo) &&
+    !submitting &&
+    !outOfCredits;
 
   async function generate() {
+    if (marketingMode) return;
     if (!source || !selected || !chosenCombo) return;
     setSubmitting(true);
     setError(null);
@@ -194,8 +211,17 @@ function CreatePageInner() {
     <AppShell>
       <div className="px-safe pb-[140px] pt-2">
         <h1 className="heading-display mb-3 text-[22px] tracking-tight text-ink-50">Create video</h1>
-        <WalletBanner balance={balance} />
-        <UploadPad value={source} onChange={setSource} />
+        {marketingMode ? <MarketingModeBanner /> : <WalletBanner balance={balance} />}
+        <UploadPad
+          value={source}
+          onChange={setSource}
+          disabled={marketingMode}
+          disabledMessage={
+            marketingMode
+              ? "Photo upload arrives with the next drop — browse the preset library below."
+              : undefined
+          }
+        />
 
         <section className="mt-6">
           <div className="mb-2 flex items-end justify-between">
@@ -254,22 +280,28 @@ function CreatePageInner() {
           ) : null}
           {error ? <div className="mb-2 px-1 text-[12px] text-danger">{error}</div> : null}
           <Button block size="lg" disabled={!canGenerate} onClick={generate}>
-            {submitting
-              ? "Starting…"
-              : outOfCredits
-                ? "Out of credits"
-                : chosenCombo
-                  ? `Generate · ${chosenCombo.creditsCost} ${
-                      chosenCombo.creditsCost === 1 ? "credit" : "credits"
-                    }`
-                  : "Generate"}
-            {!submitting && !outOfCredits && (
+            {marketingMode
+              ? "Generation arrives with the next drop"
+              : submitting
+                ? "Starting…"
+                : outOfCredits
+                  ? "Out of credits"
+                  : chosenCombo
+                    ? `Generate · ${chosenCombo.creditsCost} ${
+                        chosenCombo.creditsCost === 1 ? "credit" : "credits"
+                      }`
+                    : "Generate"}
+            {!marketingMode && !submitting && !outOfCredits && (
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             )}
           </Button>
-          {outOfCredits && requiredCredits !== null ? (
+          {marketingMode ? (
+            <p className="mt-2 text-center text-[11px] text-ink-400">
+              Generation lands as we open the rollout. Browse and pick a preset to be ready.
+            </p>
+          ) : outOfCredits && requiredCredits !== null ? (
             <p className="mt-2 text-center text-[11px] text-ink-400">
               {`Need ${requiredCredits} ${
                 requiredCredits === 1 ? "credit" : "credits"
@@ -298,6 +330,27 @@ function CreatePageInner() {
         onClose={() => setSheetOpen(false)}
       />
     </AppShell>
+  );
+}
+
+/**
+ * Marketing-mode banner shown at the top of `/create` when the live
+ * generation pipeline (Postgres + S3 + ARK_API_KEY) isn't provisioned.
+ * Spells out which actions are unavailable so users see the preset library
+ * without thinking the disabled state is a bug. Mirrors the visual
+ * language of `WalletBanner` so the page rhythm doesn't shift between
+ * modes.
+ */
+function MarketingModeBanner() {
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
+      <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
+        Preview
+      </div>
+      <div className="flex-1 text-[12px] text-ink-200">
+        Upload and generation arrive with the next drop. Browse the preset library below.
+      </div>
+    </div>
   );
 }
 
