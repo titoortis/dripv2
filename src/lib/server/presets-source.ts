@@ -11,13 +11,16 @@
  */
 
 /**
- * Capability vocabulary. PR 5 adds these as the forward-friendly seam the PR 6
- * quality picker will read; submit-time still uses the preset's `resolution` /
- * `durationSec` baseline. Listed values are the locked product surface
- * (480p / 720p / 1080p × 5s / 10s / 15s); narrowing per preset is allowed.
+ * Capability vocabulary. The locked product surface is
+ * 480p / 720p / 1080p × 5s / 10s / 15s. Per-preset narrowing is the norm —
+ * a preset's identity is its prompt + composition, and the durations /
+ * qualities the picker is allowed to expose for it are part of that
+ * identity. PR #23 makes this explicit at authoring time via
+ * `lockedDurationSec` / `allowedQualities` / `allowedAspectRatios`.
  */
 export type PresetResolution = "480p" | "720p" | "1080p";
 export type PresetDuration = 5 | 10 | 15;
+export type PresetAspectRatio = "9:16" | "16:9" | "1:1" | "adaptive";
 
 export type PresetSeed = {
   id: string;
@@ -25,21 +28,59 @@ export type PresetSeed = {
   subtitle?: string;
   thumbnailUrl?: string;
   promptTemplate: string;
-  aspectRatio: "9:16" | "16:9" | "1:1" | "adaptive";
+  /** Baseline aspect ratio. The runner submits this exact value to the
+   *  provider. Aspect-ratio choice is currently always preset-defined;
+   *  if a future preset wants to expose multiple aspect ratios, populate
+   *  `allowedAspectRatios` and the picker will surface a row. */
+  aspectRatio: PresetAspectRatio;
+  /** Baseline duration. The runner submits this exact value when the user
+   *  doesn't override (and they cannot override if `lockedDurationSec` is
+   *  set). */
   durationSec: PresetDuration;
+  /** Baseline render resolution. */
   resolution: PresetResolution;
-  /**
-   * Resolutions this preset advertises support for, including the baseline
-   * `resolution`. PR 5 stores this as a CSV string in SQLite; client
-   * receives the parsed array via `/api/presets`. Display-only until PR 6.
-   * Defaults to `[resolution]` when omitted.
-   */
+
+  // PR #23 preset-first contract. These authoring-time fields are the
+  // source-of-truth for what the picker is allowed to expose. They
+  // translate into the existing storage columns (`supportedResolutions`,
+  // `supportedDurations`, `aspectRatio`) via `resolvePresetCapabilities`
+  // + `prisma/seed.ts`, so no schema migration is needed.
+
+  /** Qualities the picker is allowed to expose for this preset. Defaults
+   *  to `[resolution]` (i.e. baseline only). A single-element list yields
+   *  the truthful "no choice — quality is preset-defined" UI; the API
+   *  derives `qualityLabel` from the single value. */
+  allowedQualities?: PresetResolution[];
+  /** When set, duration is fixed by the preset's concept — the UI never
+   *  renders a Length picker. The canonical way to express "this preset
+   *  is a 5-second beat, period." When omitted, the preset inherits
+   *  whatever durations the picker derives from `allowedDurations`. */
+  lockedDurationSec?: PresetDuration;
+  /** Durations the picker is allowed to expose *if no lock is set*.
+   *  Defaults to `[durationSec]`. Mutually exclusive with
+   *  `lockedDurationSec` in spirit (if a lock is set this field is
+   *  ignored). */
+  allowedDurations?: PresetDuration[];
+  /** Aspect ratios the picker is allowed to expose. Defaults to
+   *  `[aspectRatio]`. Today every preset is locked to its baseline
+   *  aspect; future presets that want a 16:9 alt would list both. */
+  allowedAspectRatios?: PresetAspectRatio[];
+
+  /** Optional UI labels. Defaults derive from the values themselves
+   *  (`"5s"`, `"720p"`, `"9:16"`). Provide an override only when the
+   *  default reads as a developer string. */
+  durationLabel?: string;
+  qualityLabel?: string;
+  aspectLabel?: string;
+
+  /** @deprecated alias for `allowedQualities`. Older seed entries used
+   *  this name. Kept here so any partner / fork that still authors this
+   *  field continues to work; new entries should use `allowedQualities`. */
   supportedResolutions?: PresetResolution[];
-  /**
-   * Same shape as `supportedResolutions`, but for video duration. Defaults
-   * to `[durationSec]` when omitted.
-   */
+  /** @deprecated alias for `allowedDurations` (or `[lockedDurationSec]`
+   *  when locking). Same back-compat reasoning. */
   supportedDurations?: PresetDuration[];
+
   generateAudio?: boolean;
   motionNotes?: string;
   modelId?: string;
@@ -49,11 +90,79 @@ export type PresetSeed = {
 
 const DEFAULT_MODEL = "dreamina-seedance-2-0-260128";
 
-// Locked product surface (see GELOAGENT.md). Every PR 5 platform preset
-// advertises the full grid; PR 6 will enforce per-quality multipliers and
-// gate combos that aren't live-verified against the provider.
-const FULL_RESOLUTIONS: PresetResolution[] = ["480p", "720p", "1080p"];
-const FULL_DURATIONS: PresetDuration[] = [5, 10, 15];
+/**
+ * Single source of truth for the resolved capability set of a preset.
+ *
+ * Used by `prisma/seed.ts` (writes the resolved set into the DB), by
+ * `presets-static.ts` (renders the same set into `PresetSummary` for
+ * marketing-mode static fallback), and by `/api/presets/route.ts` (which
+ * reads from the DB but applies the same default-derivation rules to
+ * preserve symmetry between the static and live wire formats).
+ *
+ * Rules:
+ *  - `allowedQualities` defaults to `supportedResolutions` (back-compat)
+ *    or `[resolution]`.
+ *  - When `lockedDurationSec` is set, it's the only allowed duration —
+ *    `allowedDurations` / `supportedDurations` are ignored.
+ *  - `allowedAspectRatios` defaults to `[aspectRatio]`.
+ *  - Display labels default to the value strings (`"5s"`, `"720p"`,
+ *    `"9:16"`); the "preset-defined" suffix is added by the UI, not
+ *    here, so labels stay machine-readable.
+ *
+ * "Locked" is a UI signal — the server gate at `/api/jobs` enforces the
+ * same lock by checking `supportedDurations` / `supportedResolutions`,
+ * which the seed populated from these resolved values.
+ */
+export type ResolvedCapabilities = {
+  allowedQualities: PresetResolution[];
+  allowedDurations: PresetDuration[];
+  allowedAspectRatios: PresetAspectRatio[];
+  lockedDurationSec: PresetDuration | null;
+  qualityLocked: boolean;
+  aspectLocked: boolean;
+  durationLabel: string;
+  qualityLabel: string;
+  aspectLabel: string;
+};
+
+export function resolvePresetCapabilities(p: PresetSeed): ResolvedCapabilities {
+  const allowedQualities = dedupe(
+    p.allowedQualities ?? p.supportedResolutions ?? [p.resolution],
+  );
+  const lockedDurationSec = p.lockedDurationSec ?? null;
+  const allowedDurations = dedupe(
+    lockedDurationSec !== null
+      ? [lockedDurationSec]
+      : p.allowedDurations ?? p.supportedDurations ?? [p.durationSec],
+  );
+  const allowedAspectRatios = dedupe(p.allowedAspectRatios ?? [p.aspectRatio]);
+
+  const qualityLocked = allowedQualities.length === 1;
+  const aspectLocked = allowedAspectRatios.length === 1;
+
+  const durationLabel =
+    p.durationLabel ?? `${lockedDurationSec ?? allowedDurations[0] ?? p.durationSec}s`;
+  const qualityLabel =
+    p.qualityLabel ?? (qualityLocked ? allowedQualities[0] : "Multiple");
+  const aspectLabel =
+    p.aspectLabel ?? (aspectLocked ? allowedAspectRatios[0] : "Multiple");
+
+  return {
+    allowedQualities,
+    allowedDurations,
+    allowedAspectRatios,
+    lockedDurationSec,
+    qualityLocked,
+    aspectLocked,
+    durationLabel,
+    qualityLabel,
+    aspectLabel,
+  };
+}
+
+function dedupe<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}
 
 export const PRESETS: PresetSeed[] = [
   {
@@ -65,8 +174,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "slow push-in, key light, particle accents",
     sortOrder: 10,
   },
@@ -79,8 +189,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "slow-mo, rim light, warehouse",
     sortOrder: 20,
   },
@@ -93,8 +204,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "radial motion blur, neon streaks",
     sortOrder: 30,
   },
@@ -107,8 +219,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "wind, golden hour, slow turn",
     sortOrder: 40,
   },
@@ -121,8 +234,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "vertical pull-back, atmospheric",
     sortOrder: 50,
   },
@@ -135,8 +249,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "handheld, golden hour, soft",
     sortOrder: 60,
   },
@@ -149,8 +264,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "VFX portal, energy wash",
     sortOrder: 70,
   },
@@ -163,8 +279,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "wing reveal, volumetrics",
     sortOrder: 80,
   },
@@ -177,8 +294,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "follow cam, dusk",
     sortOrder: 90,
   },
@@ -191,8 +309,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "low angle, smoke, rim light",
     sortOrder: 100,
   },
@@ -205,8 +324,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "marine, handheld",
     sortOrder: 110,
   },
@@ -219,8 +339,9 @@ export const PRESETS: PresetSeed[] = [
     aspectRatio: "9:16",
     durationSec: 5,
     resolution: "720p",
-    supportedResolutions: FULL_RESOLUTIONS,
-    supportedDurations: FULL_DURATIONS,
+    allowedQualities: ["720p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
     motionNotes: "dolly in, hard beam",
     sortOrder: 120,
   },

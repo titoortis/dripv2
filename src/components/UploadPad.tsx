@@ -78,7 +78,7 @@ export function UploadPad({
         }}
         disabled={disabled}
         className={cn(
-          "relative flex h-[260px] w-full items-center justify-center overflow-hidden rounded-3xl bg-ink-800 ring-soft sm:h-[320px]",
+          "relative flex h-[180px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 ring-soft sm:h-[220px]",
           !disabled && "transition hover:bg-ink-700",
           disabled && "cursor-not-allowed opacity-70",
           busy && "opacity-80",
@@ -89,18 +89,18 @@ export function UploadPad({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={previewUrl} alt="Your photo" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex flex-col items-center gap-2 text-ink-300">
-            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth={1.6}>
+          <div className="flex flex-col items-center gap-1.5 text-ink-300">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
             </svg>
-            <div className="text-sm font-medium text-ink-200">Tap to upload your photo</div>
-            <div className="text-[11px] text-ink-400">JPEG, PNG, or WebP · up to 12 MB</div>
+            <div className="text-[12.5px] font-medium text-ink-200">Tap to upload your photo</div>
+            <div className="text-[10.5px] text-ink-400">JPEG, PNG, or WebP · up to 12 MB</div>
           </div>
         )}
 
         {busy ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/40 border-t-white" />
           </div>
         ) : null}
       </button>

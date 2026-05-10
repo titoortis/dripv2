@@ -19,12 +19,22 @@
  * the seed reads, gets identical content, and stays alive in any deploy
  * shape.
  *
- * Out-of-scope: `/create` (the live preset grid) still queries the API
- * for live-mode flows where the DB is wired. That code path is unchanged.
+ * PR #22 extended this to `/create` as well: the picker grid uses this
+ * static seed as its SSR-safe initial value, and `/api/presets` is only
+ * a best-effort live refresh on top.
+ *
+ * PR #23 enriches `PresetSummary` with the preset-first metadata
+ * (`lockedDurationSec`, `allowedQualities`, `allowedAspectRatios`,
+ * display labels). The wire format here and in `/api/presets/route.ts`
+ * is byte-faithful — `resolvePresetCapabilities` is the single shared
+ * derivation rule.
  */
 
 import type { PresetSummary } from "@/components/PresetCard";
-import { activePresets } from "@/lib/server/presets-source";
+import {
+  activePresets,
+  resolvePresetCapabilities,
+} from "@/lib/server/presets-source";
 import { PROVIDER_VERIFIED_COMBOS } from "@/lib/server/jobs/verified-combos";
 import { computeCost } from "@/lib/pricing";
 
@@ -34,19 +44,18 @@ import { computeCost } from "@/lib/pricing";
  * neither of which are part of `PresetSummary` — the homepage card and
  * the launcher don't read them.
  *
- * `availableCombos` is the same `PROVIDER_VERIFIED_COMBOS ∩ supported`
- * intersection the API computes, with the same `computeCost` debit. UI
- * consumers (`PresetLauncher`, `/create`) sort defensively, so order
- * here is whatever `PROVIDER_VERIFIED_COMBOS` gives us.
+ * `availableCombos` is the same `allowedQualities × allowedDurations ∩
+ * verified` intersection the API computes, with the same `computeCost`
+ * debit. UI consumers (`PresetLauncher`, `/create`) sort defensively, so
+ * order here is whatever `PROVIDER_VERIFIED_COMBOS` gives us.
  */
 export function getStaticPresetSummaries(): PresetSummary[] {
   return activePresets().map((p) => {
-    const supportedResolutions = p.supportedResolutions ?? [p.resolution];
-    const supportedDurations = p.supportedDurations ?? [p.durationSec];
+    const caps = resolvePresetCapabilities(p);
     const availableCombos = PROVIDER_VERIFIED_COMBOS.filter(
       (c) =>
-        supportedResolutions.includes(c.resolution) &&
-        supportedDurations.includes(c.durationSec),
+        caps.allowedQualities.includes(c.resolution) &&
+        caps.allowedDurations.includes(c.durationSec),
     ).map((c) => ({
       resolution: c.resolution,
       durationSec: c.durationSec,
@@ -60,9 +69,18 @@ export function getStaticPresetSummaries(): PresetSummary[] {
       aspectRatio: p.aspectRatio,
       durationSec: p.durationSec,
       resolution: p.resolution,
-      supportedResolutions,
-      supportedDurations,
+      supportedResolutions: caps.allowedQualities,
+      supportedDurations: caps.allowedDurations,
       availableCombos,
+      // Preset-first metadata (PR #23).
+      lockedDurationSec: caps.lockedDurationSec,
+      allowedQualities: caps.allowedQualities,
+      allowedAspectRatios: caps.allowedAspectRatios,
+      qualityLocked: caps.qualityLocked,
+      aspectLocked: caps.aspectLocked,
+      durationLabel: caps.durationLabel,
+      qualityLabel: caps.qualityLabel,
+      aspectLabel: caps.aspectLabel,
     };
   });
 }

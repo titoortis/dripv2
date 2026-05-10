@@ -2,14 +2,20 @@ import { PrismaClient } from "@prisma/client";
 import {
   PRESETS,
   SEEDANCE_DEFAULT_MODEL,
+  resolvePresetCapabilities,
   type PresetSeed,
 } from "../src/lib/server/presets-source";
 
 const prisma = new PrismaClient();
 
 // CSV serialization for SQLite. The DB column is `String`; clients receive a
-// parsed array via `/api/presets`. Falls back to the preset's baseline render
-// setting when the seed entry doesn't declare a capability set.
+// parsed array via `/api/presets`. The CSV value is sourced via
+// `resolvePresetCapabilities` so the storage row matches the picker's
+// authoring-time intent (PR #23): a preset with `lockedDurationSec: 5`
+// stores `supportedDurations="5"` and a preset with
+// `allowedQualities: ["720p"]` stores `supportedResolutions="720p"`. The
+// server-side gate at `/api/jobs` keys off these CSVs, so the lock is a
+// real server enforcement, not just a UI signal.
 //
 // PR 6: explicitly sort resolutions by product rank, not lexicographically.
 // (Bare `.sort()` on `["480p","720p","1080p"]` returns `["1080p","480p","720p"]`
@@ -18,16 +24,15 @@ const prisma = new PrismaClient();
 // raw API output truthful when scanned by hand.
 const RESOLUTION_RANK: Record<string, number> = { "480p": 0, "720p": 1, "1080p": 2 };
 function resolutionsCsv(p: PresetSeed): string {
-  const set = p.supportedResolutions ?? [p.resolution];
-  return Array.from(new Set(set))
+  const { allowedQualities } = resolvePresetCapabilities(p);
+  return allowedQualities
+    .slice()
     .sort((a, b) => (RESOLUTION_RANK[a] ?? 99) - (RESOLUTION_RANK[b] ?? 99))
     .join(",");
 }
 function durationsCsv(p: PresetSeed): string {
-  const set = p.supportedDurations ?? [p.durationSec];
-  return Array.from(new Set(set))
-    .sort((a, b) => a - b)
-    .join(",");
+  const { allowedDurations } = resolvePresetCapabilities(p);
+  return allowedDurations.slice().sort((a, b) => a - b).join(",");
 }
 
 async function main() {

@@ -30,6 +30,19 @@ export type PresetSummary = {
   supportedDurations: number[];
   // PR 6 picker source-of-truth.
   availableCombos: AvailableCombo[];
+
+  // PR #23 preset-first contract. The picker reads `qualityLocked` /
+  // `lockedDurationSec` / `aspectLocked` to decide whether to render a
+  // selectable row for that axis or surface the value as locked meta.
+  // The labels are display-only.
+  lockedDurationSec: number | null;
+  allowedQualities: string[];
+  allowedAspectRatios: string[];
+  qualityLocked: boolean;
+  aspectLocked: boolean;
+  durationLabel: string;
+  qualityLabel: string;
+  aspectLabel: string;
 };
 
 export function PresetCard({
@@ -46,19 +59,23 @@ export function PresetCard({
       type="button"
       onClick={() => onSelect?.(preset.id)}
       className={cn(
-        "group relative aspect-[9/16] overflow-hidden rounded-2xl bg-ink-800 text-left ring-soft",
+        "group relative aspect-[3/4] overflow-hidden rounded-xl bg-ink-800 text-left ring-soft",
         "transition focus:outline-none",
         selected && "ring-2 ring-accent",
       )}
       aria-pressed={selected}
     >
       <Thumb preset={preset} />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5">
         <div className="flex items-end justify-between gap-2">
-          <div>
-            <div className="heading-display text-[15px] leading-tight text-white">{preset.title}</div>
+          <div className="min-w-0">
+            <div className="heading-display truncate text-[12.5px] leading-tight text-white">
+              {preset.title}
+            </div>
             {preset.subtitle ? (
-              <div className="mt-0.5 text-[11px] leading-tight text-ink-200">{preset.subtitle}</div>
+              <div className="mt-0.5 truncate text-[10.5px] leading-tight text-ink-200">
+                {preset.subtitle}
+              </div>
             ) : null}
           </div>
           {selected ? <SelectedDot /> : null}
