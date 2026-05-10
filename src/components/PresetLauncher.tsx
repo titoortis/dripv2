@@ -26,10 +26,9 @@ import { cn } from "@/lib/utils";
  *    `availableCombos` is sorted, never let the chosen pair drift outside
  *    the verified set.
  *  - Generation submits the same `{presetId, sourceImageId, resolution,
- *    durationSec}` body as `/create`. There is no second `references[]`
- *    field on `/api/jobs` today, so the secondary slot uploads to
- *    `/api/uploads` for visual parity but the resulting id is **not**
- *    forwarded to the provider — see the slot helper text.
+ *    durationSec}` body as `/create`. The secondary reference slot is
+ *    visible but non-interactive (comingSoon), matching `/create`'s
+ *    truthful approach — no upload, no state, no API call.
  */
 export function PresetLauncher({
   open,
@@ -42,7 +41,6 @@ export function PresetLauncher({
 }) {
   const router = useRouter();
   const [primary, setPrimary] = useState<UploadedSource | null>(null);
-  const [secondary, setSecondary] = useState<UploadedSource | null>(null);
   const [chosenResolution, setChosenResolution] = useState<string | null>(null);
   const [chosenDuration, setChosenDuration] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -227,9 +225,7 @@ export function PresetLauncher({
             <div className="flex-1 overflow-y-auto px-5 pt-4">
               <ReferencesBlock
                 primary={primary}
-                secondary={secondary}
                 onPrimary={setPrimary}
-                onSecondary={setSecondary}
               />
               <SettingsBlock
                 preset={preset}
@@ -313,14 +309,10 @@ function Hero({
 
 function ReferencesBlock({
   primary,
-  secondary,
   onPrimary,
-  onSecondary,
 }: {
   primary: UploadedSource | null;
-  secondary: UploadedSource | null;
   onPrimary: (next: UploadedSource | null) => void;
-  onSecondary: (next: UploadedSource | null) => void;
 }) {
   return (
     <section className="mb-5">
@@ -333,18 +325,11 @@ function ReferencesBlock({
           value={primary}
           onChange={onPrimary}
         />
-        <RefSlot
-          label="Style or pet ref"
-          hint="Optional secondary reference."
-          required={false}
-          value={secondary}
-          onChange={onSecondary}
-        />
+        <ComingSoonSlot />
       </div>
       <p className="mt-2 text-[11px] text-ink-400">
-        We&rsquo;ll apply the preset to your face. The secondary reference is uploaded for
-        visual parity, but isn&rsquo;t sent to the provider yet — multi-reference rendering
-        ships with the next drop.
+        Primary reference becomes your character. Secondary slot arrives with
+        character support.
       </p>
     </section>
   );
@@ -462,6 +447,43 @@ function RefSlot({
         ) : (
           <span className="text-ink-400">{required ? "Required" : "Optional"}</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Static coming-soon slot for the secondary reference. Matches the
+ *  `comingSoon` treatment on `/create`'s `UploadPad`: visible but
+ *  non-interactive, no file input, no state, no API call. */
+function ComingSoonSlot() {
+  return (
+    <div>
+      <div
+        className="relative flex aspect-[4/3] w-full cursor-not-allowed items-center justify-center overflow-hidden rounded-2xl border border-dashed border-ink-600 bg-ink-800 opacity-70"
+        aria-label="Optional secondary reference — arrives with character support"
+      >
+        <span
+          aria-hidden="true"
+          className="absolute left-2 top-2 z-10 rounded-full bg-ink-700/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-200"
+        >
+          Optional
+        </span>
+        <span
+          aria-hidden="true"
+          className="absolute right-2 top-2 z-10 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-accent"
+        >
+          Soon
+        </span>
+        <div className="flex flex-col items-center gap-1 px-3 text-center text-ink-400">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm3 5h8m-8 4h8m-8 4h5" />
+          </svg>
+          <div className="text-[11px] font-medium text-ink-300">Style or pet ref</div>
+          <div className="text-[10px] leading-tight text-ink-500">Arrives with character support</div>
+        </div>
+      </div>
+      <div className="mt-1.5 text-[11px] text-ink-500">
+        Optional
       </div>
     </div>
   );
