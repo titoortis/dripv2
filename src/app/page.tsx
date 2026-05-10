@@ -14,9 +14,6 @@ import { PresetLauncher } from "@/components/PresetLauncher";
 import { PresetPlaceholder, type PresetSummary } from "@/components/PresetCard";
 import { getStaticPresetSummaries } from "@/lib/presets-static";
 
-const HERO_VIDEO_URL =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
-
 export default function Home() {
   return (
     <main className="theme-landing min-h-screen overflow-x-hidden">
@@ -38,12 +35,11 @@ function HeroSection() {
 
   const heroY = useTransform(scrollYProgress, [0, 1], [0, -200]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-  const dashboardY = useTransform(scrollYProgress, [0, 1], [0, -250]);
 
   return (
     <section
       ref={sectionRef}
-      className="relative min-h-screen overflow-hidden pb-12 md:pb-16"
+      className="relative overflow-hidden pb-12 md:pb-16"
     >
       <Navbar />
 
@@ -116,8 +112,6 @@ function HeroSection() {
           </span>
         </motion.div>
       </motion.div>
-
-      <DashboardArea dashboardY={dashboardY} />
     </section>
   );
 }
@@ -208,107 +202,6 @@ function NavLinkWithChevron({
         <polyline points="6 9 12 15 18 9" />
       </svg>
     </Link>
-  );
-}
-
-function DashboardArea({ dashboardY }: { dashboardY: MotionValue<number> }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 40 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, delay: 0.4 }}
-      className="relative mt-6 md:mt-8"
-      style={{
-        width: "100vw",
-        marginLeft: "calc(-50vw + 50%)",
-        aspectRatio: "16 / 9",
-      }}
-    >
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden
-        className="absolute inset-0 z-0 h-full w-full object-cover"
-      >
-        <source src={HERO_VIDEO_URL} type="video/mp4" />
-      </video>
-
-      <div className="absolute left-1/2 top-1/2 z-10 w-[90%] max-w-5xl -translate-x-1/2 -translate-y-1/2 mix-blend-luminosity">
-        <motion.div style={{ y: dashboardY }}>
-          <PresetDeckMock />
-        </motion.div>
-      </div>
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 h-40 bg-gradient-to-t from-black to-transparent" />
-    </motion.div>
-  );
-}
-
-/* The "dashboard image" — adapted from the SaaS reference into a cinematic
- * preset-deck mock built in CSS so we don't need a static asset. With
- * mix-blend-mode: luminosity it tints to the background video underneath. */
-function PresetDeckMock() {
-  const cards: Array<{ name: string; bg: string }> = [
-    {
-      name: "Iron Hero",
-      bg: "linear-gradient(180deg, #FFB74A 0%, #7B3F00 60%, #100B07 100%)",
-    },
-    {
-      name: "Hyperspeed",
-      bg: "linear-gradient(180deg, #9F6CFF 0%, #FF5A5F 60%, #10131C 100%)",
-    },
-    {
-      name: "Wings",
-      bg: "linear-gradient(180deg, #5CE7A0 0%, #1B9AAA 60%, #0B1414 100%)",
-    },
-    {
-      name: "Earth Orbit",
-      bg: "linear-gradient(180deg, #7B8CDE 0%, #3B0F2D 60%, #0E0F19 100%)",
-    },
-    {
-      name: "Smoke Sprint",
-      bg: "linear-gradient(180deg, #C8C8CF 0%, #3A3A45 60%, #0A0A0B 100%)",
-    },
-  ];
-  return (
-    <div className="rounded-2xl bg-[hsl(0_0%_5%)] p-5 ring-1 ring-white/10 shadow-[0_30px_120px_rgba(0,0,0,0.6)]">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-[10px] font-bold text-black">
-            d
-          </span>
-          <span className="text-sm font-semibold tracking-tight">drip · Pick a preset</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50">
-          <span>9:16</span>
-          <span>·</span>
-          <span>5s</span>
-          <span>·</span>
-          <span>720p</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 gap-3">
-        {cards.map((c) => (
-          <div
-            key={c.name}
-            className="relative aspect-[9/16] overflow-hidden rounded-xl ring-1 ring-white/10"
-            style={{ background: c.bg }}
-          >
-            <div className="absolute inset-x-0 bottom-0 p-3">
-              <div className="text-[11px] font-semibold tracking-tight text-white">
-                {c.name}
-              </div>
-              <div className="text-[9px] uppercase tracking-[0.14em] text-white/60">
-                VFX preset
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
