@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
-import { Chip } from "@/components/Chip";
 import { isMarketingMode } from "@/components/ComingSoon";
 import { PresetCard, type PresetSummary, type AvailableCombo } from "@/components/PresetCard";
 import { PresetSheet } from "@/components/PresetSheet";
@@ -209,8 +208,8 @@ function CreatePageInner() {
 
   return (
     <AppShell>
-      <div className="px-safe pb-[140px] pt-2">
-        <h1 className="heading-display mb-3 text-[22px] tracking-tight text-ink-50">Create video</h1>
+      <div className="px-safe pb-[120px] pt-1.5">
+        <h1 className="heading-display mb-2 text-[15px] tracking-tight text-ink-50">Create video</h1>
         {marketingMode ? <MarketingModeBanner /> : <WalletBanner balance={balance} />}
         <UploadPad
           value={source}
@@ -223,20 +222,22 @@ function CreatePageInner() {
           }
         />
 
-        <section className="mt-6">
+        <section className="mt-4">
           <div className="mb-2 flex items-end justify-between">
             <div>
-              <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-ink-200">
-                Discover presets
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200">
+                Preset library
               </h2>
-              <p className="text-[12px] text-ink-400">Seedance 2.0</p>
+              <p className="text-[10.5px] leading-snug text-ink-400">
+                Each preset ships its own prompt, duration, and quality. Custom prompt editing arrives later.
+              </p>
             </div>
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              className="text-[12px] font-semibold text-accent underline-offset-4 hover:underline"
+              className="text-[11px] font-semibold text-accent underline-offset-4 hover:underline"
             >
-              Explore all
+              Browse all
             </button>
           </div>
           <PresetStrip
@@ -253,7 +254,7 @@ function CreatePageInner() {
         className="pb-safe fixed inset-x-0 bottom-0 z-40 mx-auto max-w-3xl"
         style={{ pointerEvents: "none" }}
       >
-        <div className="mx-3 my-3 rounded-3xl bg-ink-900/85 p-3 ring-soft glass" style={{ pointerEvents: "auto" }}>
+        <div className="mx-2 my-2 rounded-2xl bg-ink-900/85 p-2.5 ring-soft glass" style={{ pointerEvents: "auto" }}>
           {selected ? (
             <QualityPicker
               preset={selected}
@@ -266,19 +267,14 @@ function CreatePageInner() {
             />
           ) : null}
           {selected ? (
-            <div className="mb-2 flex items-center gap-2 px-1">
-              <Chip>{chosenDuration ?? selected.durationSec}s</Chip>
-              <Chip>{selected.aspectRatio}</Chip>
-              <Chip>{chosenResolution ?? selected.resolution}</Chip>
-              {chosenCombo ? (
-                <Chip>{`${chosenCombo.creditsCost} ${
-                  chosenCombo.creditsCost === 1 ? "credit" : "credits"
-                }`}</Chip>
-              ) : null}
-              <span className="ml-auto truncate text-[12px] text-ink-300">{selected.title}</span>
-            </div>
+            <PresetMetaStrip
+              preset={selected}
+              chosenCombo={chosenCombo}
+              chosenDuration={chosenDuration}
+              chosenResolution={chosenResolution}
+            />
           ) : null}
-          {error ? <div className="mb-2 px-1 text-[12px] text-danger">{error}</div> : null}
+          {error ? <div className="mb-1.5 px-1 text-[11px] text-danger">{error}</div> : null}
           <Button block size="lg" disabled={!canGenerate} onClick={generate}>
             {marketingMode
               ? "Generation arrives with the next drop"
@@ -298,24 +294,28 @@ function CreatePageInner() {
             )}
           </Button>
           {marketingMode ? (
-            <p className="mt-2 text-center text-[11px] text-ink-400">
-              Generation lands as we open the rollout. Browse and pick a preset to be ready.
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+              Preset prompt is included. Duration is preset-defined. Generation arrives with the next drop.
             </p>
           ) : outOfCredits && requiredCredits !== null ? (
-            <p className="mt-2 text-center text-[11px] text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
               {`Need ${requiredCredits} ${
                 requiredCredits === 1 ? "credit" : "credits"
               } — top-up arrives with pricing packs.`}
             </p>
           ) : !canGenerate && !submitting ? (
-            <p className="mt-2 text-center text-[11px] text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
               {source
                 ? selected && selected.availableCombos.length === 0
                   ? "More qualities arrive as we live-verify."
-                  : "Pick a preset to continue."
-                : "Upload a photo to continue."}
+                  : "Pick a preset to continue. Preset prompt and duration are included."
+                : "Upload a photo to continue. Preset prompt and duration are included."}
             </p>
-          ) : null}
+          ) : (
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+              Preset prompt is included. Duration is preset-defined. Custom prompt editing arrives later.
+            </p>
+          )}
         </div>
       </div>
 
@@ -382,15 +382,28 @@ function WalletBanner({ balance }: { balance: number | null }) {
 }
 
 /**
- * Two-row picker: resolution buttons (sorted by product rank) and duration
- * buttons (sorted numerically). Buttons that don't appear in
- * `availableCombos` for the selected preset are *not rendered at all* —
- * showing them disabled would mislead users about which qualities are
- * actually shippable today (only 720p × 5s is verified at PR 6 merge time).
+ * Conditional picker: only renders a row for an axis that has more than one
+ * real option. The product rule (PR #23) is *no selector for any axis with
+ * only one real option* — a single-button row is a fake choice and reads as
+ * a dev playground.
  *
- * Display matches charge: the credits chip in the bottom CTA reads from the
- * exact `availableCombos` row this picker selects, so what the button says
- * is exactly what the server will debit.
+ *   - quality row appears only when `availableResolutions.length > 1`. Today
+ *     every preset declares a single allowed quality, so the quality row
+ *     never shows.
+ *   - duration row appears only when the preset is **not** locked-duration
+ *     **and** more than one duration is available for the chosen quality.
+ *     Today every preset declares `lockedDurationSec`, so the duration row
+ *     never shows either.
+ *
+ * When both axes are single-option, the picker collapses to nothing and
+ * `<PresetMetaStrip>` is the entire quality surface. As axes gain real
+ * choices via newly verified provider combos, the corresponding row
+ * reappears for that axis only — no schema change needed, no UI redesign
+ * needed.
+ *
+ * Display matches charge: the credits read from the exact `availableCombos`
+ * row this picker selects (or the only row, when locked), so what the user
+ * sees is exactly what the server will debit.
  */
 function QualityPicker({
   preset,
@@ -411,27 +424,80 @@ function QualityPicker({
 }) {
   if (preset.availableCombos.length === 0) {
     return (
-      <div className="mb-2 px-1 text-[11px] text-ink-400">
+      <div className="mb-1.5 px-1 text-[10.5px] text-ink-400">
         Live-verified qualities arrive soon for this preset.
       </div>
     );
   }
+  const showQualityRow = availableResolutions.length > 1;
+  const showDurationRow =
+    preset.lockedDurationSec === null && availableDurationsForResolution.length > 1;
+  if (!showQualityRow && !showDurationRow) return null;
   return (
-    <div className="mb-2 grid gap-1.5 px-1">
-      <PickerRow
-        label="Quality"
-        items={availableResolutions}
-        chosen={chosenResolution}
-        onPick={onChangeResolution}
-        renderLabel={(r) => r}
-      />
-      <PickerRow
-        label="Length"
-        items={availableDurationsForResolution}
-        chosen={chosenDuration}
-        onPick={onChangeDuration}
-        renderLabel={(d) => `${d}s`}
-      />
+    <div className="mb-1.5 grid gap-1 px-1">
+      {showQualityRow ? (
+        <PickerRow
+          label="Quality"
+          items={availableResolutions}
+          chosen={chosenResolution}
+          onPick={onChangeResolution}
+          renderLabel={(r) => r}
+        />
+      ) : null}
+      {showDurationRow ? (
+        <PickerRow
+          label="Length"
+          items={availableDurationsForResolution}
+          chosen={chosenDuration}
+          onPick={onChangeDuration}
+          renderLabel={(d) => `${d}s`}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Locked meta strip — single low-contrast line that surfaces the preset's
+ * intent as non-interactive metadata: title, duration, quality, aspect,
+ * credits cost. Replaces the older `<Chip>` row to make the bottom CTA feel
+ * productized instead of like a chip soup.
+ *
+ * The strip is always rendered while a preset is selected; it serves as
+ * the truth-in-advertising line for what Generate will submit. When an
+ * axis is locked (e.g. duration), the strip is the only place that value
+ * appears — the picker doesn't render a row for it.
+ */
+function PresetMetaStrip({
+  preset,
+  chosenCombo,
+  chosenDuration,
+  chosenResolution,
+}: {
+  preset: PresetSummary;
+  chosenCombo: AvailableCombo | null;
+  chosenDuration: number | null;
+  chosenResolution: string | null;
+}) {
+  const dur = chosenDuration ?? preset.lockedDurationSec ?? preset.durationSec;
+  const res = chosenResolution ?? preset.resolution;
+  const aspect = preset.aspectRatio;
+  const cost = chosenCombo?.creditsCost ?? null;
+  return (
+    <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-300">
+      <span className="truncate font-medium text-ink-100">{preset.title}</span>
+      <span aria-hidden className="text-ink-500">·</span>
+      <span>{`${dur}s`}</span>
+      <span aria-hidden className="text-ink-500">·</span>
+      <span>{res}</span>
+      <span aria-hidden className="text-ink-500">·</span>
+      <span>{aspect}</span>
+      {cost !== null ? (
+        <>
+          <span aria-hidden className="text-ink-500">·</span>
+          <span>{`${cost} ${cost === 1 ? "credit" : "credits"}`}</span>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -491,24 +557,24 @@ function PresetStrip({
 }) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="aspect-[9/16] animate-pulse rounded-2xl bg-ink-800 ring-soft" />
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-ink-800 ring-soft" />
         ))}
       </div>
     );
   }
   if (presets.length === 0) {
     return (
-      <div className="rounded-2xl bg-ink-800 p-5 text-sm text-ink-300 ring-soft">
+      <div className="rounded-xl bg-ink-800 p-4 text-[12px] text-ink-300 ring-soft">
         No presets yet. Add some in <code className="text-ink-100">src/lib/server/presets-source.ts</code> and run{" "}
         <code className="text-ink-100">pnpm db:seed</code>.
       </div>
     );
   }
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      {presets.slice(0, 6).map((p) => (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+      {presets.slice(0, 10).map((p) => (
         <PresetCard key={p.id} preset={p} selected={selectedId === p.id} onSelect={onSelect} />
       ))}
     </div>
