@@ -125,7 +125,11 @@ export function UploadPad({
         disabled={!interactive}
         className={cn(
           "relative flex h-[160px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 sm:h-[200px]",
-          comingSoon ? "border border-dashed border-ink-600 opacity-70" : "ring-soft",
+          comingSoon
+            ? "border border-dashed border-ink-600 opacity-70"
+            : hasMedia
+              ? "ring-2 ring-accent"
+              : "ring-soft",
           interactive && "transition hover:bg-ink-700",
           disabled && !comingSoon && "cursor-not-allowed opacity-70",
           comingSoon && "cursor-not-allowed",
@@ -209,13 +213,23 @@ export function UploadPad({
         ) : error ? (
           <span className="text-danger">{error}</span>
         ) : hasMedia ? (
-          <button
-            type="button"
-            onClick={clear}
-            className="text-ink-300 underline-offset-4 hover:text-ink-100"
-          >
-            Replace photo
-          </button>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="text-ink-300 underline-offset-4 hover:text-ink-100"
+            >
+              Replace
+            </button>
+            <span className="text-ink-600" aria-hidden>·</span>
+            <button
+              type="button"
+              onClick={clear}
+              className="text-ink-300 underline-offset-4 hover:text-ink-100"
+            >
+              Remove
+            </button>
+          </span>
         ) : (
           <span className="text-ink-400">
             {helperIdle ?? "One clear, well-lit portrait works best."}
