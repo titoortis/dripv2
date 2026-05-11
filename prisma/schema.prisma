@@ -115,6 +115,14 @@ model Preset {
   generateAudio  Boolean  @default(false)
   motionNotes    String?
   modelId        String   @default("dreamina-seedance-2-0-260128")
+  // PR #29: which provider-side content slot this preset's generation uses.
+  //   "first_frame"      → existing path: image_url + role="first_frame" (Seedance image-to-video baseline)
+  //   "reference_images" → provider-backed reference path: BytePlus Files API asset, sent via the `reference_images` content slot
+  // Mutually exclusive in the provider body — see seedance.ts discriminated
+  // union. Default keeps every existing preset on the current first_frame
+  // path; switching a preset to "reference_images" requires both this
+  // column AND the env kill switch PROVIDER_REFERENCE_MODE_ENABLED.
+  referenceMode  String   @default("first_frame")
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
   ownerUserId    String?
@@ -180,7 +188,12 @@ model ProviderAsset {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  sourceImage SourceImage @relation(fields: [sourceImageId], references: [id])
+  sourceImage SourceImage     @relation(fields: [sourceImageId], references: [id])
+  // PR #29: jobs that picked up this provider asset for `reference_images`
+  // generation. Empty in PR #28; populated by the runner once
+  // PROVIDER_REFERENCE_MODE_ENABLED is on and a preset opts into the
+  // reference_images mode.
+  jobs        GenerationJob[]
 
   @@unique([provider, providerFileId])
   @@index([sourceImageId])
@@ -240,6 +253,19 @@ model GenerationJob {
   resultVideoId   String?   @unique
   errorCode       String?
   errorReason     String?
+  // PR #29: observability-only classification of terminal failures —
+  //   user | provider | operator | internal
+  // Null while the job is non-terminal. Derived from errorCode at the
+  // terminal-mark site via classifyFailure. Refund policy lives in
+  // wallet.ts (REFUNDABLE_CODES + http_5* fallback) and is NOT replaced
+  // by this column — failureKind is for instrumentation and future UX
+  // copy, not money.
+  failureKind     String?
+  // PR #29: provider-side asset used for this job, only populated when
+  // the runner takes the reference_images path (preset.referenceMode ==
+  // "reference_images" AND PROVIDER_REFERENCE_MODE_ENABLED is on).
+  // first_frame jobs leave this null.
+  providerAssetId String?
   attempts        Int       @default(0)
   nextPollAt      DateTime?
   pollStartedAt   DateTime?
@@ -247,12 +273,13 @@ model GenerationJob {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  preset       Preset        @relation(fields: [presetId], references: [id])
-  sourceImage  SourceImage   @relation(fields: [sourceImageId], references: [id])
-  resultVideo  ResultVideo?  @relation(fields: [resultVideoId], references: [id])
-  user         User?         @relation("JobByUser", fields: [userId], references: [id])
-  creator      User?         @relation("JobByCreator", fields: [creatorUserId], references: [id])
-  referralCode ReferralCode? @relation(fields: [referralCodeId], references: [id])
+  preset        Preset         @relation(fields: [presetId], references: [id])
+  sourceImage   SourceImage    @relation(fields: [sourceImageId], references: [id])
+  resultVideo   ResultVideo?   @relation(fields: [resultVideoId], references: [id])
+  user          User?          @relation("JobByUser", fields: [userId], references: [id])
+  creator       User?          @relation("JobByCreator", fields: [creatorUserId], references: [id])
+  referralCode  ReferralCode?  @relation(fields: [referralCodeId], references: [id])
+  providerAsset ProviderAsset? @relation(fields: [providerAssetId], references: [id])
 
   @@unique([sessionId, requestHash])
   @@index([sessionId, createdAt])
