@@ -169,6 +169,12 @@ export async function POST(req: Request) {
   // hash differently — they're different jobs, debited at their own prices.
   // Pre-PR-6 jobs that ran at the preset baseline still hash identically
   // because the chosen values default to the baseline when omitted.
+  //
+  // PR #29: `referenceMode` participates in the hash too, but is omitted
+  // from the canonical string when it equals the `"first_frame"` default —
+  // see `requestHash` doc. That keeps pre-PR-29 hashes byte-stable.
+  const presetReferenceMode =
+    preset.referenceMode === "reference_images" ? "reference_images" : "first_frame";
   const hash = requestHash({
     presetId: preset.id,
     sourceImageId: image.id,
@@ -178,6 +184,7 @@ export async function POST(req: Request) {
     durationSec: chosenDuration,
     generateAudio: preset.generateAudio,
     promptTemplate: preset.promptTemplate,
+    referenceMode: presetReferenceMode,
   });
 
   // Idempotency: same session + same normalized inputs → return the existing

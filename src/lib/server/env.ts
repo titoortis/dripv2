@@ -34,6 +34,17 @@ const Schema = z.object({
     .string()
     .default("false")
     .transform((v) => v === "true" || v === "1"),
+
+  // PR #29 — kill switch for the provider-backed reference_images runner
+  // path. When false (default), the runner forces `first_frame` regardless
+  // of `preset.referenceMode`, so the feature can be merged dark and
+  // toggled on only once Seedance reference_images bodies are
+  // live-validated. Mirrors the DISABLE_POLLER / S3_FORCE_PATH_STYLE
+  // string-with-transform convention so .env files stay homogeneous.
+  PROVIDER_REFERENCE_MODE_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true" || v === "1"),
 });
 
 export type AppEnv = z.infer<typeof Schema>;

@@ -68,10 +68,15 @@ export class SeedanceError extends Error {
   }
 }
 
-export type CreateImageToVideoInput = {
+// PR #29 — discriminated union for the two provider task body shapes. The
+// BytePlus Seedance API rejects a task body that carries BOTH `first_frame`
+// and `reference_images` at the same time; encoding that constraint in the
+// type system means callers physically cannot pass both. Pre-PR-29 callers
+// keep working: omitting `mode` defaults to `first_frame` and the existing
+// `imageUrl` field is required.
+export type CreateImageToVideoCommon = {
   modelId: string;
   promptText: string;
-  imageUrl: string;
   ratio: string;
   resolution: string;
   durationSec: number;
@@ -79,6 +84,38 @@ export type CreateImageToVideoInput = {
   returnLastFrame?: boolean;
   seed?: number;
 };
+
+export type CreateFirstFrameInput = CreateImageToVideoCommon & {
+  mode?: "first_frame";
+  /** Public URL of the source image — Seedance fetches it directly. */
+  imageUrl: string;
+};
+
+export type CreateReferenceImagesInput = CreateImageToVideoCommon & {
+  mode: "reference_images";
+  /**
+   * One or more provider-hosted Files API references. Each entry must be
+   * a Files API URI in the BytePlus-accepted form (e.g.
+   * `byteplus-file://<file-id>`). The runner derives this from a
+   * `ProviderAsset.providerFileId` via `referenceImageUriForFile()`.
+   *
+   * PR #29 ships with a single reference (the primary human reference).
+   * The array is kept open for a future secondary-reference flow.
+   */
+  referenceImages: string[];
+};
+
+export type CreateImageToVideoInput = CreateFirstFrameInput | CreateReferenceImagesInput;
+
+/**
+ * Build the provider-side reference URI for a Files API asset.
+ *
+ * The exact protocol is fixed at one place so a future provider docs
+ * update (different scheme, signed URL, etc.) is a one-line change.
+ */
+export function referenceImageUriForFile(providerFileId: string): string {
+  return `byteplus-file://${providerFileId}`;
+}
 
 // ---------------------------------------------------------------------------
 // Files API types — for provider-backed asset spike (Phase 0).
@@ -169,16 +206,34 @@ function endpoint(path: string): string {
 
 export const seedance: SeedanceClient = {
   async createImageToVideoTask(input) {
+    // Build the `content` array per mode. The two shapes are mutually
+    // exclusive at the provider — see the discriminated union above.
+    // We narrow on `input.mode` so TS keeps `imageUrl` / `referenceImages`
+    // discoverable inside each branch without `any`.
+    const content: Array<Record<string, unknown>> = [
+      { type: "text", text: input.promptText },
+    ];
+    if (input.mode === "reference_images") {
+      for (const uri of input.referenceImages) {
+        content.push({
+          type: "image_url",
+          image_url: { url: uri },
+          role: "reference_image",
+        });
+      }
+    } else {
+      // `mode` is either "first_frame" or omitted — both go through the
+      // first_frame branch with the typed `imageUrl` field.
+      content.push({
+        type: "image_url",
+        image_url: { url: input.imageUrl },
+        role: "first_frame",
+      });
+    }
+
     const body = {
       model: input.modelId,
-      content: [
-        { type: "text", text: input.promptText },
-        {
-          type: "image_url",
-          image_url: { url: input.imageUrl },
-          role: "first_frame",
-        },
-      ],
+      content,
       ratio: input.ratio,
       resolution: input.resolution,
       duration: input.durationSec,

@@ -84,6 +84,14 @@ export type PresetSeed = {
   generateAudio?: boolean;
   motionNotes?: string;
   modelId?: string;
+  /** PR #29. Which provider-side content slot this preset uses.
+   *  - "first_frame"      → image_url + role="first_frame" (today's path)
+   *  - "reference_images" → BytePlus Files API asset via the `reference_images` slot
+   *  Mutually exclusive in the provider task body — the runner enforces it
+   *  via a discriminated union. Default keeps existing presets on the
+   *  proven first_frame path; flipping to "reference_images" also requires
+   *  the env kill switch `PROVIDER_REFERENCE_MODE_ENABLED`. */
+  referenceMode?: "first_frame" | "reference_images";
   isActive?: boolean;
   sortOrder: number;
 };
