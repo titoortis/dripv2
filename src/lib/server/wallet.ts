@@ -47,15 +47,6 @@ const REFUNDABLE_CODES = new Set([
   "internal_error",
   // operator — our BytePlus account refused the model on us, not the user
   "SetLimitExceeded",
-  // PR #29 — provider-backed asset lifecycle failures. From the user's
-  // perspective these are internal (we never even got to submit a
-  // generation task) and must refund. The `provider_asset_*` codes are
-  // emitted by the runner when the reference_images path can't promote
-  // a `ProviderAsset` to `active` before the wall-clock deadline.
-  "provider_asset_upload_failed",
-  "provider_asset_get_failed",
-  "provider_asset_storage_fetch_failed",
-  "provider_asset_timeout",
 ]);
 
 function isRefundableErrorCode(code: string | null | undefined): boolean {
