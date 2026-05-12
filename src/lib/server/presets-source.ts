@@ -186,6 +186,7 @@ export const PRESETS: PresetSeed[] = [
     lockedDurationSec: 5,
     allowedAspectRatios: ["9:16"],
     motionNotes: "slow push-in, key light, particle accents",
+    referenceMode: "reference_images",
     sortOrder: 10,
   },
   {
@@ -201,6 +202,7 @@ export const PRESETS: PresetSeed[] = [
     lockedDurationSec: 5,
     allowedAspectRatios: ["9:16"],
     motionNotes: "slow-mo, rim light, warehouse",
+    referenceMode: "reference_images",
     sortOrder: 20,
   },
   {
