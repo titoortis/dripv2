@@ -170,9 +170,9 @@ export async function POST(req: Request) {
   // Pre-PR-6 jobs that ran at the preset baseline still hash identically
   // because the chosen values default to the baseline when omitted.
   //
-  // PR #29: `referenceMode` participates in the hash too, but is omitted
-  // from the canonical string when it equals the `"first_frame"` default —
-  // see `requestHash` doc. That keeps pre-PR-29 hashes byte-stable.
+  // `referenceMode` participates in the hash too, but is omitted from the
+  // canonical string when it equals the `"first_frame"` default — see
+  // `requestHash` doc. That keeps hashes byte-stable for the default mode.
   const presetReferenceMode =
     preset.referenceMode === "reference_images" ? "reference_images" : "first_frame";
   const hash = requestHash({

@@ -115,13 +115,15 @@ model Preset {
   generateAudio  Boolean  @default(false)
   motionNotes    String?
   modelId        String   @default("dreamina-seedance-2-0-260128")
-  // PR #29: which provider-side content slot this preset's generation uses.
-  //   "first_frame"      → existing path: image_url + role="first_frame" (Seedance image-to-video baseline)
-  //   "reference_images" → provider-backed reference path: BytePlus Files API asset, sent via the `reference_images` content slot
-  // Mutually exclusive in the provider body — see seedance.ts discriminated
-  // union. Default keeps every existing preset on the current first_frame
-  // path; switching a preset to "reference_images" requires both this
-  // column AND the env kill switch PROVIDER_REFERENCE_MODE_ENABLED.
+  // Which provider-side content slot this preset's generation uses.
+  //   "first_frame"      → image_url + role="first_frame" (Seedance
+  //                        image-to-video baseline; current behavior).
+  //   "reference_images" → same source image is sent with
+  //                        role="reference_image". Same provider URL, just
+  //                        a different content slot label. The kill switch
+  //                        env `PROVIDER_REFERENCE_MODE_ENABLED` must also
+  //                        be on for the runner to honor this — otherwise
+  //                        the runner forces "first_frame".
   referenceMode  String   @default("first_frame")
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
@@ -149,55 +151,6 @@ model SourceImage {
   createdAt  DateTime @default(now())
 
   jobs           GenerationJob[]
-  // PR #28: a source image can be mirrored 0..N times into the provider
-  // Files API. Today we always uphold a 1:1 (one active provider asset per
-  // source image), but the column is a relation so a future re-upload after
-  // a provider-side expiry can coexist with the expired one rather than
-  // overwriting it. See `src/lib/server/providers/asset-lifecycle.ts`.
-  providerAssets ProviderAsset[]
-}
-
-// ---------------------------------------------------------------------------
-// Mirror of a `SourceImage` inside the provider's Files API. The PR #27
-// spike proved the upload + status-poll path against BytePlus ModelArk
-// Files API (`POST /files`, `GET /files/{id}`). This model is the durable
-// counterpart: a row exists for every (source image, provider) pair that
-// we have asked the provider to host on our behalf.
-//
-// Status mirrors `ProviderFileStatus` in `seedance.ts`:
-//   processing | active | failed | deleted | expired
-//
-// `providerExpiresAt` mirrors the provider-side 7-day retention window
-// (configurable up to 30) so the lifecycle layer can preemptively re-upload
-// before the asset becomes unusable. Nullable because not every provider
-// surfaces an `expire_at` in their response.
-//
-// PR #28 only writes via `asset-lifecycle.ts`. The generation runner does
-// not consume these rows yet — that's PR #29 (the `reference_images`
-// runner branch).
-// ---------------------------------------------------------------------------
-model ProviderAsset {
-  id                String    @id @default(cuid())
-  sourceImageId     String
-  provider          String    @default("byteplus_seedance_2")
-  providerFileId    String
-  status            String
-  bytes             Int?
-  mimeType          String?
-  providerExpiresAt DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  sourceImage SourceImage     @relation(fields: [sourceImageId], references: [id])
-  // PR #29: jobs that picked up this provider asset for `reference_images`
-  // generation. Empty in PR #28; populated by the runner once
-  // PROVIDER_REFERENCE_MODE_ENABLED is on and a preset opts into the
-  // reference_images mode.
-  jobs        GenerationJob[]
-
-  @@unique([provider, providerFileId])
-  @@index([sourceImageId])
-  @@index([status, updatedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +206,7 @@ model GenerationJob {
   resultVideoId   String?   @unique
   errorCode       String?
   errorReason     String?
-  // PR #29: observability-only classification of terminal failures —
+  // Observability-only classification of terminal failures —
   //   user | provider | operator | internal
   // Null while the job is non-terminal. Derived from errorCode at the
   // terminal-mark site via classifyFailure. Refund policy lives in
@@ -261,11 +214,6 @@ model GenerationJob {
   // by this column — failureKind is for instrumentation and future UX
   // copy, not money.
   failureKind     String?
-  // PR #29: provider-side asset used for this job, only populated when
-  // the runner takes the reference_images path (preset.referenceMode ==
-  // "reference_images" AND PROVIDER_REFERENCE_MODE_ENABLED is on).
-  // first_frame jobs leave this null.
-  providerAssetId String?
   attempts        Int       @default(0)
   nextPollAt      DateTime?
   pollStartedAt   DateTime?
@@ -279,7 +227,6 @@ model GenerationJob {
   user          User?          @relation("JobByUser", fields: [userId], references: [id])
   creator       User?          @relation("JobByCreator", fields: [creatorUserId], references: [id])
   referralCode  ReferralCode?  @relation(fields: [referralCodeId], references: [id])
-  providerAsset ProviderAsset? @relation(fields: [providerAssetId], references: [id])
 
   @@unique([sessionId, requestHash])
   @@index([sessionId, createdAt])

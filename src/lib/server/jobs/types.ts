@@ -1,9 +1,6 @@
 // Generation job lifecycle. Source of truth for transitions.
 //
 //   queued
-//     └─► provisioning           (PR #29: preset.referenceMode == "reference_images";
-//     │                           provider asset is uploading / waiting for `active`.
-//     │                           skipped on the first_frame path.)
 //     └─► uploading              (source image saved to our storage)
 //           └─► submitted        (provider task created; provider_task_id stored)
 //                 └─► processing (provider reports running)
@@ -14,7 +11,6 @@
 
 export type JobStatus =
   | "queued"
-  | "provisioning"
   | "uploading"
   | "submitted"
   | "processing"
@@ -35,7 +31,7 @@ export function isTerminal(status: string): status is "completed" | "failed" | "
 }
 
 // ---------------------------------------------------------------------------
-// PR #29 — failure taxonomy (observability only).
+// Failure taxonomy (observability only).
 //
 // `FailureKind` is a coarse-grained label derived from `errorCode` at every
 // terminal-failure site. Stored on `GenerationJob.failureKind`. It is NOT a
@@ -52,8 +48,8 @@ export function isTerminal(status: string): status is "completed" | "failed" | "
 //   - operator  : our account/configuration is wrong (SetLimitExceeded,
 //                 missing model access). Refundable.
 //   - internal  : we never reached the provider in a useful way
-//                 (missing_api_key, wall_clock_timeout, our own bugs,
-//                 provider_asset_* failures). Refundable.
+//                 (missing_api_key, wall_clock_timeout, our own bugs).
+//                 Refundable.
 // ---------------------------------------------------------------------------
 
 export type FailureKind = "user" | "provider" | "operator" | "internal";
@@ -83,13 +79,6 @@ const INTERNAL_FAULT_CODES: ReadonlySet<string> = new Set([
   "missing_api_key",
   "wall_clock_timeout",
   "internal_error",
-  // PR #29 — failures during provider asset lifecycle (uploads, expiry)
-  // are internal from the user's perspective; refund-policy already
-  // refunds via http_5* / internal_error code prefixes when applicable.
-  "provider_asset_upload_failed",
-  "provider_asset_get_failed",
-  "provider_asset_storage_fetch_failed",
-  "provider_asset_timeout",
 ]);
 
 /**

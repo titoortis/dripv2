@@ -5,14 +5,14 @@ import { createHash } from "node:crypto";
  * twice for the same session collide and short-circuit to the existing job
  * (see `@@unique([sessionId, requestHash])` and `/api/jobs` POST).
  *
- * PR #29 adds `referenceMode` to the hash so a preset that internally
+ * `referenceMode` participates in the hash so a preset that internally
  * switches from `first_frame` to `reference_images` (or vice versa) hashes
  * differently — same image + same preset + different submit pathway is a
  * legitimately different job.
  *
  * Backward stability: when `referenceMode === "first_frame"` (the default),
  * the field is omitted from the canonical string. That keeps every hash
- * computed before PR #29 byte-identical to its PR #28-and-earlier value,
+ * computed before this column existed byte-identical to its current value,
  * so existing idempotency keys in production DBs continue to match new
  * computations for the same logical inputs.
  */
@@ -25,8 +25,8 @@ export function requestHash(input: {
   durationSec: number;
   generateAudio: boolean;
   promptTemplate: string;
-  /** PR #29. Defaults to `"first_frame"`; omitted from the canonical
-   *  string at that default to preserve hash stability for legacy rows. */
+  /** Defaults to `"first_frame"`; omitted from the canonical string at
+   *  that default to preserve hash stability for legacy rows. */
   referenceMode?: "first_frame" | "reference_images";
 }): string {
   const parts = [
