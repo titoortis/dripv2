@@ -113,6 +113,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   });
 
   try {
+    logEvent("job_pre_submit", { job_id: job.id, role, preset_id: job.presetId });
     const { providerTaskId } = await seedance.createImageToVideoTask({
       modelId: job.providerModelId,
       promptText: job.preset.promptTemplate,
@@ -123,6 +124,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
       durationSec: job.durationSec,
       generateAudio: job.preset.generateAudio,
     });
+    logEvent("job_submit_success", { job_id: job.id, providerTaskId, role });
 
     await prisma.generationJob.update({
       where: { id: job.id },
