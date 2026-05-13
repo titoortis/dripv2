@@ -92,6 +92,23 @@ export type PresetSeed = {
    *  proven first_frame path; flipping to "reference_images" also requires
    *  the env kill switch `PROVIDER_REFERENCE_MODE_ENABLED`. */
   referenceMode?: "first_frame" | "reference_images";
+
+  /** Optional pre-transform pipeline. When non-null, the runner pipes the
+   *  user's uploaded source image through OpenAI Images Edit (model =
+   *  `env.OPENAI_IMAGE_MODEL`, default `gpt-image-1`) using this prompt,
+   *  persists the edited PNG to our storage, and submits *that* URL to
+   *  Seedance in place of the original. Used by presets where the
+   *  desired "first frame" is a stylized restage of the user's photo
+   *  (e.g. `f1_pilot_v1` → Ferrari paddock portrait).
+   *
+   *  When set, `referenceMode` should stay `"first_frame"` — the edited
+   *  image *is* the desired first frame; we are not asking Seedance to
+   *  do its own reference-image character lift on top.
+   *
+   *  Storage column: `Preset.transformPromptTemplate` (nullable). When
+   *  null at runtime the runner skips the transform step entirely. */
+  transformPromptTemplate?: string;
+
   isActive?: boolean;
   sortOrder: number;
 };
@@ -354,6 +371,33 @@ export const PRESETS: PresetSeed[] = [
     allowedAspectRatios: ["9:16"],
     motionNotes: "dolly in, hard beam",
     sortOrder: 120,
+  },
+  // -------------------------------------------------------------------------
+  // Two-stage preset (PR: f1_pilot_v1). The user uploads a normal portrait;
+  // the runner first restages it as a Ferrari F1 paddock portrait via
+  // OpenAI Images Edit, persists the edited PNG to R2, then submits that
+  // URL to Seedance as `first_frame` with the long broadcast-style
+  // animation prompt below. Quality is user-selectable across 720p / 1080p
+  // (both verified entries live in `verified-combos.ts`). Duration locked
+  // to 5s like all other launch presets.
+  // -------------------------------------------------------------------------
+  {
+    id: "f1_pilot_v1",
+    title: "F1 Pilot",
+    subtitle: "Ferrari paddock broadcast.",
+    promptTemplate:
+      "Ultra realistic cinematic Formula 1 paddock video of the person from the reference image inside the Ferrari F1 garage during a live qualifying session. She is wearing a red Ferrari team headset with microphone while watching the race intensely. Realistic Sky Sports F1 broadcast atmosphere, warm red ambient lighting, glowing race monitors, Ferrari engineers moving naturally in the background. The camera captures multiple cinematic angles: close-up front portrait with direct eye contact, slow side profile shot while she watches the monitors, over-the-shoulder angle facing the race screens, smooth cinematic orbit camera around her face, subtle handheld broadcast camera movement, natural head turns, blinking, breathing, soft facial expressions, realistic hair movement. She looks focused, elegant, calm, and emotionally immersed in the race. Occasionally glancing at the screens and reacting subtly to the race action. Luxury model aesthetics mixed with authentic Formula 1 pit wall energy. Ultra realistic skin texture, detailed eyes, natural lips, blonde balayage hair with soft movement, realistic Ferrari uniform and headset materials. Shallow depth of field, cinematic bokeh, realistic shadows, depth and atmosphere, live sports broadcast realism. Style of Netflix Formula 1 documentary mixed with live Sky Sports F1 camera footage. Shot on 85mm lens, cinematic color grading, premium sports cinematography, realistic motion blur, immersive lighting, broadcast-quality realism. Camera movement: slow dolly shots, smooth handheld movement, cinematic push-ins, subtle focus pulls, natural broadcast zooms. Mood: luxury, exclusive Ferrari paddock access, high tension qualifying atmosphere, immersive Formula 1 experience. Avoid: cartoon, anime, CGI feel, distorted face, unrealistic eyes, plastic skin, jittery movement, broken anatomy, low quality, overexposed lighting, stiff expressions, robotic motion, flickering, text artifacts, watermark.",
+    transformPromptTemplate:
+      "Edit this photo so the same person appears inside a Ferrari Formula 1 garage during a live race. Preserve the person's face, identity, hairstyle, hair color, eye color, skin tone, and proportions exactly — do not alter their facial features. Change wardrobe, accessories, lighting, and background as follows. Outfit: red Ferrari team jacket with the Scuderia Ferrari prancing-horse logo on the chest, white tank top underneath. Headset: black Ferrari team radio headset covering the ears, foam microphone arm in front of the mouth, coiled cable trailing off-frame, branded with Ferrari. Setting: blurred Ferrari F1 pit garage in the background — engineers in red Ferrari shirts, race telemetry monitors with warm red glow, white Ferrari pit boxes. Lighting: warm red ambient broadcast lighting, soft cinematic key light on the face, shallow depth of field, 85mm portrait look. Framing: portrait, three-quarter view, focused intent expression watching off-frame. Add a subtle TV broadcast overlay: a small \"LIVE\" badge in the upper-right corner and a thin chyron bar at the bottom (no readable text). Style: Sky Sports F1 broadcast aesthetic, ultra-realistic skin texture, natural lips, detailed eyes, premium sports cinematography, realistic shadows, depth and atmosphere. No cartoon, no anime, no CGI, no plastic skin, no distorted face, no watermark, no text artifacts. Output a single photorealistic portrait at the requested size.",
+    aspectRatio: "9:16",
+    durationSec: 5,
+    resolution: "720p",
+    allowedQualities: ["720p", "1080p"],
+    lockedDurationSec: 5,
+    allowedAspectRatios: ["9:16"],
+    motionNotes: "broadcast cam, slow dolly, Ferrari paddock",
+    referenceMode: "first_frame",
+    sortOrder: 130,
   },
 ];
 

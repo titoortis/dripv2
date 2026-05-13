@@ -28,6 +28,7 @@ export type VerifiedCombo = { resolution: Resolution; durationSec: Duration };
 
 export const PROVIDER_VERIFIED_COMBOS: readonly VerifiedCombo[] = [
   { resolution: "720p", durationSec: 5 },
+  { resolution: "1080p", durationSec: 5 },
 ];
 
 export function isComboVerified(input: { resolution: Resolution; durationSec: Duration }): boolean {

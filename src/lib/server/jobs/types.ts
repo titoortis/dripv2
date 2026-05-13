@@ -73,12 +73,17 @@ const OPERATOR_FAULT_CODES: ReadonlySet<string> = new Set([
 const PROVIDER_FAULT_CODES: ReadonlySet<string> = new Set([
   "succeeded_without_url",
   "download_failed",
+  // pre-transform (PR: f1_pilot_v1) — OpenAI failed to return image bytes
+  "transform_no_image_data",
 ]);
 
 const INTERNAL_FAULT_CODES: ReadonlySet<string> = new Set([
   "missing_api_key",
   "wall_clock_timeout",
   "internal_error",
+  // pre-transform (PR: f1_pilot_v1) — our worker could not fetch the
+  // user's source image from R2 before sending it to OpenAI
+  "transform_source_download_failed",
 ]);
 
 /**
@@ -101,5 +106,8 @@ export function classifyFailure(errorCode: string | null | undefined): FailureKi
   if (INTERNAL_FAULT_CODES.has(errorCode)) return "internal";
   if (/^http_5\d{2}$/.test(errorCode)) return "provider";
   if (/^http_4\d{2}$/.test(errorCode)) return "user";
+  // Pre-transform (PR: f1_pilot_v1) same taxonomy as Seedance:
+  if (/^transform_http_5\d{2}$/.test(errorCode)) return "provider";
+  if (/^transform_http_4\d{2}$/.test(errorCode)) return "user";
   return "internal";
 }

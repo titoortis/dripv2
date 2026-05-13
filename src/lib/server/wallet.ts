@@ -47,6 +47,12 @@ const REFUNDABLE_CODES = new Set([
   "internal_error",
   // operator — our BytePlus account refused the model on us, not the user
   "SetLimitExceeded",
+  // pre-transform stage (PR: f1_pilot_v1) — our integration with OpenAI
+  // Images Edit failed. Treated as operator/internal fault (our problem,
+  // not the user's photo content). Content-policy rejects come back
+  // separately as `transform_content_policy_violation` and stay burned.
+  "transform_source_download_failed",
+  "transform_no_image_data",
 ]);
 
 function isRefundableErrorCode(code: string | null | undefined): boolean {
@@ -54,6 +60,10 @@ function isRefundableErrorCode(code: string | null | undefined): boolean {
   if (REFUNDABLE_CODES.has(code)) return true;
   // Provider 5xx is provider-fault — refund. Provider 4xx is user-fault — keep burned.
   if (code.startsWith("http_5")) return true;
+  // Same taxonomy applied to the pre-transform stage (OpenAI Images Edit):
+  // 5xx from OpenAI is provider-fault — refund. 4xx is user-fault
+  // (bad/disallowed image content) — stay burned.
+  if (code.startsWith("transform_http_5")) return true;
   return false;
 }
 
