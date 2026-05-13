@@ -145,6 +145,16 @@ model Preset {
   //                        be on for the runner to honor this — otherwise
   //                        the runner forces "first_frame".
   referenceMode  String   @default("first_frame")
+  // Optional pre-transform pipeline. When non-null, the runner edits the
+  // user's uploaded source image with the configured image model
+  // (OpenAI Images Edit, model = `env.OPENAI_IMAGE_MODEL`) using this
+  // prompt, persists the edited PNG to our storage, and submits that
+  // URL to Seedance in place of the original. Used by presets where
+  // the desired "first frame" is a stylized restage of the user's
+  // photo (e.g. f1_pilot_v1 → Ferrari paddock portrait).
+  //
+  // Null means "submit the source image directly" (legacy path).
+  transformPromptTemplate String?
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
   ownerUserId    String?

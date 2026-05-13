@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "../env";
 import { logError, logEvent } from "../logger";
 import { prisma } from "../prisma";
+import { openAiImage, OpenAiImageError } from "../providers/openai-image";
 import {
   seedance,
   SeedanceError,
@@ -85,7 +86,18 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
     return;
   }
 
+  // Pre-transform pipeline (PR: f1_pilot_v1):
+  //   When the preset opts in via `transformPromptTemplate`, we first
+  //   restage the user's uploaded photo through OpenAI Images Edit
+  //   (model = `env.OPENAI_IMAGE_MODEL`, default `gpt-image-1`) and
+  //   persist the edited PNG to our storage. The resulting public URL
+  //   replaces `sourceImage.publicUrl` in the Seedance task body. The
+  //   role label is forced to `first_frame` because the edited PNG is
+  //   the desired first frame — Seedance does not need to do its own
+  //   reference-image character lift on top.
+  const usePreTransform = Boolean(job.preset.transformPromptTemplate);
   const useReferenceImageRole =
+    !usePreTransform &&
     env().PROVIDER_REFERENCE_MODE_ENABLED &&
     job.preset.referenceMode === "reference_images";
   const role: ImageRole = useReferenceImageRole ? "reference_image" : "first_frame";
@@ -111,14 +123,31 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
     to: "uploading",
     attempts: job.attempts + 1,
     role,
+    pre_transform: usePreTransform,
   });
 
   try {
-    logEvent("job_pre_submit", { job_id: job.id, role, preset_id: job.presetId });
+    let providerImageUrl = job.sourceImage.publicUrl;
+    if (usePreTransform) {
+      providerImageUrl = await runPreTransform({
+        jobId: job.id,
+        sourceImageUrl: job.sourceImage.publicUrl,
+        sourceMimeType: job.sourceImage.mimeType,
+        prompt: job.preset.transformPromptTemplate!,
+      });
+    }
+
+    logEvent("job_pre_submit", {
+      job_id: job.id,
+      role,
+      preset_id: job.presetId,
+      pre_transform: usePreTransform,
+      image_url: providerImageUrl,
+    });
     const { providerTaskId } = await seedance.createImageToVideoTask({
       modelId: job.providerModelId,
       promptText: job.preset.promptTemplate,
-      imageUrl: job.sourceImage.publicUrl,
+      imageUrl: providerImageUrl,
       role,
       ratio: job.preset.aspectRatio,
       resolution: job.resolution,
@@ -331,12 +360,67 @@ function nextPollDate(): Date {
 async function markFailedFromError(jobId: string, err: unknown) {
   const reason =
     err instanceof Error ? err.message : typeof err === "string" ? err : "unknown error";
-  const code =
-    err instanceof SeedanceError && err.providerCode
-      ? err.providerCode
-      : err instanceof SeedanceError
-        ? `http_${err.httpStatus}`
-        : "internal_error";
+  const code = errorCodeFor(err);
   await markJobTerminal({ jobId, status: "failed", errorCode: code, errorReason: reason });
   await maybeRefundJob(jobId);
+}
+
+function errorCodeFor(err: unknown): string {
+  if (err instanceof SeedanceError) {
+    return err.providerCode ?? `http_${err.httpStatus}`;
+  }
+  if (err instanceof OpenAiImageError) {
+    if (err.providerCode === "missing_api_key") return "missing_api_key";
+    if (err.providerCode === "source_download_failed") return "transform_source_download_failed";
+    if (err.providerCode === "no_image_data") return "transform_no_image_data";
+    if (err.providerCode) return `transform_${err.providerCode}`;
+    return `transform_http_${err.httpStatus}`;
+  }
+  return "internal_error";
+}
+
+/**
+ * Run the optional pre-transform step (OpenAI Images Edit → persist PNG to
+ * storage) and return the public URL that should be handed to Seedance.
+ * Throws on any failure so the caller's `markFailedFromError` can map it
+ * to the right `errorCode` and refund taxonomy.
+ */
+async function runPreTransform(args: {
+  jobId: string;
+  sourceImageUrl: string;
+  sourceMimeType: string;
+  prompt: string;
+}): Promise<string> {
+  if (!openAiImage.hasCredentials()) {
+    throw new OpenAiImageError("OPENAI_API_KEY is not configured.", {
+      httpStatus: 0,
+      providerCode: "missing_api_key",
+    });
+  }
+  logEvent("job_pre_transform_start", {
+    job_id: args.jobId,
+    model: env().OPENAI_IMAGE_MODEL,
+  });
+  const t0 = Date.now();
+  const edited = await openAiImage.editImage({
+    sourceImageUrl: args.sourceImageUrl,
+    sourceMimeType: args.sourceMimeType,
+    prompt: args.prompt,
+    size: "1024x1536",
+    quality: "high",
+  });
+  const key = `transforms/${args.jobId}/${randomUUID()}.png`;
+  const stored = await storage().put({
+    key,
+    body: edited.pngBuffer,
+    contentType: edited.mime,
+  });
+  logEvent("job_pre_transform_success", {
+    job_id: args.jobId,
+    storage_key: stored.storageKey,
+    public_url: stored.publicUrl,
+    bytes: stored.bytes,
+    elapsed_ms: Date.now() - t0,
+  });
+  return stored.publicUrl;
 }

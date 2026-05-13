@@ -45,6 +45,15 @@ const Schema = z.object({
     .string()
     .default("false")
     .transform((v) => v === "true" || v === "1"),
+
+  // OpenAI API key. Required only for presets that opt into the
+  // `transformPromptTemplate` pre-transform pipeline (currently:
+  // `f1_pilot_v1`). When unset, the runner short-circuits any
+  // pre-transform request with a typed terminal failure so the
+  // refund policy can apply. Other presets are unaffected.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_IMAGE_MODEL: z.string().default("gpt-image-2"),
 });
 
 export type AppEnv = z.infer<typeof Schema>;
@@ -66,5 +75,10 @@ export function env(): AppEnv {
 
 export function hasArkCredentials(): boolean {
   const k = env().ARK_API_KEY;
+  return Boolean(k && k.trim().length > 0);
+}
+
+export function hasOpenAiCredentials(): boolean {
+  const k = env().OPENAI_API_KEY;
   return Boolean(k && k.trim().length > 0);
 }
