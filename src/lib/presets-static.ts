@@ -81,6 +81,9 @@ export function getStaticPresetSummaries(): PresetSummary[] {
       durationLabel: caps.durationLabel,
       qualityLabel: caps.qualityLabel,
       aspectLabel: caps.aspectLabel,
+      // PR 34: surface the seed's `referenceMode` so the SSR card grid can
+      // render the "Ref mode" badge without waiting for `/api/presets`.
+      referenceMode: p.referenceMode === "reference_images" ? "reference_images" : "first_frame",
     };
   });
 }

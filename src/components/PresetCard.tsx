@@ -16,6 +16,8 @@ export type AvailableCombo = {
   creditsCost: number;
 };
 
+export type PresetReferenceMode = "first_frame" | "reference_images";
+
 export type PresetSummary = {
   id: string;
   title: string;
@@ -43,6 +45,12 @@ export type PresetSummary = {
   durationLabel: string;
   qualityLabel: string;
   aspectLabel: string;
+  // PR 34 disclosure. Which provider-side content slot this preset uses
+  // when the kill switch is on at submit time. "reference_images" surfaces
+  // a "Ref mode" badge on the card and an informational note on /create.
+  // Whether the runtime actually used that slot is captured on the job row
+  // (`GenerationJob.role`), not here.
+  referenceMode: PresetReferenceMode;
 };
 
 export function PresetCard({
@@ -66,6 +74,7 @@ export function PresetCard({
       aria-pressed={selected}
     >
       <Thumb preset={preset} />
+      {preset.referenceMode === "reference_images" ? <RefModeBadge /> : null}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5">
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
@@ -82,6 +91,22 @@ export function PresetCard({
         </div>
       </div>
     </button>
+  );
+}
+
+/**
+ * Small top-left badge surfaced on presets that opt in to the
+ * reference-image content slot. Display-only — the actual provider role
+ * used by a job is recorded on `GenerationJob.role` at submit time.
+ */
+function RefModeBadge() {
+  return (
+    <span
+      className="absolute left-1.5 top-1.5 rounded-full bg-black/65 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-ink-100 ring-soft backdrop-blur"
+      title="This preset uses the reference-image content slot for character consistency."
+    >
+      Ref mode
+    </span>
   );
 }
 
