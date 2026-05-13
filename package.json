@@ -7,15 +7,17 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "prisma generate && next build",
+    "dev": "prisma generate --schema=prisma/schema.dev.prisma && next dev -p 3000",
+    "build": "node scripts/check-prisma-schemas.cjs && prisma generate && next build",
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev",
+    "prisma:check-schemas": "node scripts/check-prisma-schemas.cjs",
+    "db:push": "prisma db push --schema=prisma/schema.dev.prisma",
+    "db:push:prod": "prisma db push",
+    "db:migrate": "prisma migrate dev --schema=prisma/schema.dev.prisma",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force --skip-seed"
+    "db:reset": "prisma migrate reset --force --skip-seed --schema=prisma/schema.dev.prisma"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
