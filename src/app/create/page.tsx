@@ -515,22 +515,32 @@ function PresetMetaStrip({
   const res = chosenResolution ?? preset.resolution;
   const aspect = preset.aspectRatio;
   const cost = chosenCombo?.creditsCost ?? null;
+  const refMode = preset.referenceMode === "reference_images";
   return (
-    <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-300">
-      <span className="truncate font-medium text-ink-100">{preset.title}</span>
-      <span aria-hidden className="text-ink-500">·</span>
-      <span>{`${dur}s`}</span>
-      <span aria-hidden className="text-ink-500">·</span>
-      <span>{res}</span>
-      <span aria-hidden className="text-ink-500">·</span>
-      <span>{aspect}</span>
-      {cost !== null ? (
-        <>
-          <span aria-hidden className="text-ink-500">·</span>
-          <span>{`${cost} ${cost === 1 ? "credit" : "credits"}`}</span>
-        </>
+    <>
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-300">
+        <span className="truncate font-medium text-ink-100">{preset.title}</span>
+        <span aria-hidden className="text-ink-500">·</span>
+        <span>{`${dur}s`}</span>
+        <span aria-hidden className="text-ink-500">·</span>
+        <span>{res}</span>
+        <span aria-hidden className="text-ink-500">·</span>
+        <span>{aspect}</span>
+        {cost !== null ? (
+          <>
+            <span aria-hidden className="text-ink-500">·</span>
+            <span>{`${cost} ${cost === 1 ? "credit" : "credits"}`}</span>
+          </>
+        ) : null}
+      </div>
+      {refMode ? (
+        <p className="mb-1.5 px-1 text-[10.5px] leading-snug text-ink-300">
+          <span className="font-semibold text-ink-100">Reference mode:</span>{" "}
+          your photo is used as a character-consistency reference rather than the
+          opening frame.
+        </p>
       ) : null}
-    </div>
+    </>
   );
 }
 

@@ -100,6 +100,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
     data: {
       status: "uploading",
       attempts: { increment: 1 },
+      role,
       ...(ensureExpiresAt ? { expiresAt: ensureExpiresAt } : {}),
     },
   });

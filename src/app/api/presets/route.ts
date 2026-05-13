@@ -30,6 +30,7 @@ export async function GET() {
       supportedResolutions: true,
       supportedDurations: true,
       generateAudio: true,
+      referenceMode: true,
       sortOrder: true,
     },
   });
@@ -84,6 +85,7 @@ export async function GET() {
       qualityLabel,
       aspectLabel,
       generateAudio: p.generateAudio,
+      referenceMode: p.referenceMode === "reference_images" ? "reference_images" : "first_frame",
       sortOrder: p.sortOrder,
     };
   });

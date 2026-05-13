@@ -215,6 +215,20 @@ model GenerationJob {
   // copy, not money.
   failureKind     String?
   attempts        Int       @default(0)
+  // Provider-side content-slot label actually used for the source image.
+  // Populated by the runner at the queued → uploading transition, derived
+  // from `(env.PROVIDER_REFERENCE_MODE_ENABLED, preset.referenceMode)`.
+  // Persisted (not derived from the preset at read time) so the job's
+  // history stays truthful even if the preset row's `referenceMode` or
+  // the kill-switch env later changes. One of:
+  //   "first_frame"      → legacy Seedance image-to-video baseline
+  //   "reference_image"  → reference-mode content slot (PR 32+, gated by
+  //                        the env kill switch at submit time)
+  // Null while the job is still queued, and stays null on jobs that
+  // failed before the runner reached the uploading transition (e.g.
+  // `missing_api_key` short-circuit). UI badges should treat null as
+  // "unknown" rather than rendering a misleading "first_frame" label.
+  role            String?
   nextPollAt      DateTime?
   pollStartedAt   DateTime?
   expiresAt       DateTime?

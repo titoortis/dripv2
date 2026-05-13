@@ -13,7 +13,17 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
   const job = await prisma.generationJob.findUnique({
     where: { id: ctx.params.id },
     include: {
-      preset: { select: { id: true, title: true, subtitle: true, aspectRatio: true, durationSec: true, resolution: true } },
+      preset: {
+        select: {
+          id: true,
+          title: true,
+          subtitle: true,
+          aspectRatio: true,
+          durationSec: true,
+          resolution: true,
+          referenceMode: true,
+        },
+      },
       resultVideo: { select: { id: true, publicUrl: true, lastFrameUrl: true } },
       sourceImage: { select: { id: true, publicUrl: true } },
     },
@@ -34,6 +44,10 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       resolution: job.resolution,
       durationSec: job.durationSec,
       creditsCost: job.creditsCost,
+      // PR 34: provider-side content-slot label actually used for the source
+      // image. Null while the job is queued, or on jobs that failed before
+      // the runner reached the uploading transition (e.g. `missing_api_key`).
+      role: job.role,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
       preset: job.preset,

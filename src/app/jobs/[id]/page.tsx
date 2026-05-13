@@ -20,6 +20,12 @@ type JobView = {
   resolution: string;
   durationSec: number;
   creditsCost: number;
+  // PR 34: provider-side content-slot label actually used. Null until the
+  // runner reaches the queued → uploading transition. The badge derives
+  // truth from this, not from preset.referenceMode, so a job submitted
+  // while the kill switch was off stays labeled "first_frame" even if
+  // the preset later flips.
+  role?: "first_frame" | "reference_image" | null;
   preset: {
     id: string;
     title: string;
@@ -27,6 +33,7 @@ type JobView = {
     aspectRatio: string;
     durationSec: number;
     resolution: string;
+    referenceMode: "first_frame" | "reference_images";
   };
   sourceImage: { id: string; publicUrl: string };
   resultVideo: { id: string; publicUrl: string; lastFrameUrl: string | null } | null;
@@ -139,6 +146,7 @@ function ProcessingView({ job }: { job: JobView }) {
           <Chip>{job.durationSec}s</Chip>
           <Chip>{job.preset.aspectRatio}</Chip>
           <Chip>{job.resolution}</Chip>
+          {job.role === "reference_image" ? <RoleBadge /> : null}
         </div>
 
         <div className="mt-5">
@@ -180,6 +188,7 @@ function ResultView({ job }: { job: JobView }) {
           <Chip>{job.durationSec}s</Chip>
           <Chip>{job.preset.aspectRatio}</Chip>
           <Chip>{job.resolution}</Chip>
+          {job.role === "reference_image" ? <RoleBadge /> : null}
           <span className="ml-auto truncate text-[12px] text-ink-300">{job.preset.title}</span>
         </div>
       </div>
@@ -266,6 +275,24 @@ function FailedView({ job }: { job: JobView }) {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * Tiny inline pill that mirrors the `Chip` shape next to the duration /
+ * aspect / resolution chips on the processing and result screens.
+ * Rendered only when `job.role === "reference_image"` — i.e. the runner
+ * actually submitted the source image as a reference rather than as the
+ * baseline first frame. Title text gives the disclosure copy on hover.
+ */
+function RoleBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent ring-soft"
+      title="Your photo was used as a character-consistency reference instead of the opening frame."
+    >
+      Reference mode
+    </span>
   );
 }
 
