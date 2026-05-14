@@ -208,24 +208,26 @@ function CreatePageInner() {
 
   return (
     <AppShell>
-      <div className="px-safe pb-[120px] pt-1.5">
-        <h1 className="heading-display mb-2 text-[15px] tracking-tight text-ink-50">Create video</h1>
+      <div className="px-safe mx-auto w-full max-w-3xl pb-[180px] pt-1.5 md:max-w-4xl md:pb-[200px] md:pt-6 lg:max-w-5xl">
+        <h1 className="heading-display mb-2 text-[15px] tracking-tight text-ink-50 md:mb-5 md:text-3xl lg:text-4xl">
+          Create video
+        </h1>
         {marketingMode ? <MarketingModeBanner /> : <WalletBanner balance={balance} />}
 
         <section aria-labelledby="references-heading">
-          <div className="mb-2">
+          <div className="mb-2 md:mb-4">
             <h2
               id="references-heading"
-              className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200"
+              className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200 md:text-xs"
             >
               References
             </h2>
-            <p className="text-[10.5px] leading-snug text-ink-400">
+            <p className="text-[10.5px] leading-snug text-ink-400 md:mt-1 md:text-sm md:leading-relaxed">
               Primary reference becomes your character. Secondary slot lands with character
               support — adds style or composition guidance.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 md:gap-4">
             <UploadPad
               value={source}
               onChange={setSource}
@@ -254,20 +256,20 @@ function CreatePageInner() {
           </div>
         </section>
 
-        <section className="mt-4">
-          <div className="mb-2 flex items-end justify-between">
+        <section className="mt-4 md:mt-8">
+          <div className="mb-2 flex items-end justify-between md:mb-4">
             <div>
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-200 md:text-xs">
                 Preset library
               </h2>
-              <p className="text-[10.5px] leading-snug text-ink-400">
+              <p className="text-[10.5px] leading-snug text-ink-400 md:mt-1 md:text-sm md:leading-relaxed">
                 Each preset ships its own prompt, duration, and quality. Custom prompt editing arrives later.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              className="text-[11px] font-semibold text-accent underline-offset-4 hover:underline"
+              className="text-[11px] font-semibold text-accent underline-offset-4 hover:underline md:text-sm"
             >
               Browse all
             </button>
@@ -283,10 +285,13 @@ function CreatePageInner() {
 
       {/* Sticky bottom CTA */}
       <div
-        className="pb-safe fixed inset-x-0 bottom-0 z-40 mx-auto max-w-3xl"
+        className="pb-safe fixed inset-x-0 bottom-0 z-40 mx-auto max-w-3xl md:max-w-4xl lg:max-w-5xl"
         style={{ pointerEvents: "none" }}
       >
-        <div className="mx-2 my-2 rounded-2xl bg-ink-900/85 p-2.5 ring-soft glass" style={{ pointerEvents: "auto" }}>
+        <div
+          className="mx-2 my-2 rounded-2xl bg-ink-900/85 p-2.5 ring-soft glass md:mx-4 md:my-4 md:rounded-3xl md:p-4"
+          style={{ pointerEvents: "auto" }}
+        >
           {selected ? (
             <QualityPicker
               preset={selected}
@@ -306,8 +311,16 @@ function CreatePageInner() {
               chosenResolution={chosenResolution}
             />
           ) : null}
-          {error ? <div className="mb-1.5 px-1 text-[11px] text-danger">{error}</div> : null}
-          <Button block size="lg" disabled={!canGenerate} onClick={generate}>
+          {error ? (
+            <div className="mb-1.5 px-1 text-[11px] text-danger md:mb-3 md:text-sm">{error}</div>
+          ) : null}
+          <Button
+            block
+            size="lg"
+            disabled={!canGenerate}
+            onClick={generate}
+            className="md:py-5 md:text-[19px]"
+          >
             {marketingMode
               ? "Generation arrives with the next drop"
               : submitting
@@ -320,23 +333,29 @@ function CreatePageInner() {
                       }`
                     : "Generate"}
             {!marketingMode && !submitting && !outOfCredits && (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5 md:h-6 md:w-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             )}
           </Button>
           {marketingMode ? (
-            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400 md:mt-3 md:text-sm">
               Preset prompt is included. Duration is preset-defined. Generation arrives with the next drop.
             </p>
           ) : outOfCredits && requiredCredits !== null ? (
-            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400 md:mt-3 md:text-sm">
               {`Need ${requiredCredits} ${
                 requiredCredits === 1 ? "credit" : "credits"
               } — top-up arrives with pricing packs.`}
             </p>
           ) : !canGenerate && !submitting ? (
-            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400 md:mt-3 md:text-sm">
               {source
                 ? selected && selected.availableCombos.length === 0
                   ? "More qualities arrive as we live-verify."
@@ -344,7 +363,7 @@ function CreatePageInner() {
                 : "Upload a photo to continue. Preset prompt and duration are included."}
             </p>
           ) : (
-            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400">
+            <p className="mt-1.5 text-center text-[10.5px] leading-snug text-ink-400 md:mt-3 md:text-sm">
               Preset prompt is included. Duration is preset-defined. Custom prompt editing arrives later.
             </p>
           )}
@@ -391,22 +410,22 @@ function WalletBanner({ balance }: { balance: number | null }) {
   if (balance >= 1) {
     const label = balance === 1 ? "1 credit" : `${balance} credits`;
     return (
-      <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
+      <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft md:mb-6 md:gap-4 md:px-6 md:py-4">
+        <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent md:text-sm">
           Credits
         </div>
-        <div className="flex-1 text-[12px] text-ink-200">
+        <div className="flex-1 text-[12px] text-ink-200 md:text-base">
           {label} available. Pick a preset and quality.
         </div>
       </div>
     );
   }
   return (
-    <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft">
-      <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-danger">
+    <div className="mb-3 flex items-center gap-3 rounded-2xl bg-ink-900 px-4 py-3 ring-soft md:mb-6 md:gap-4 md:px-6 md:py-4">
+      <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-danger md:text-sm">
         Out of credits
       </div>
-      <div className="flex-1 text-[12px] text-ink-200">
+      <div className="flex-1 text-[12px] text-ink-200 md:text-base">
         Pricing packs land soon.
       </div>
     </div>
@@ -456,7 +475,7 @@ function QualityPicker({
 }) {
   if (preset.availableCombos.length === 0) {
     return (
-      <div className="mb-1.5 px-1 text-[10.5px] text-ink-400">
+      <div className="mb-1.5 px-1 text-[10.5px] text-ink-400 md:mb-3 md:text-sm">
         Live-verified qualities arrive soon for this preset.
       </div>
     );
@@ -466,7 +485,7 @@ function QualityPicker({
     preset.lockedDurationSec === null && availableDurationsForResolution.length > 1;
   if (!showQualityRow && !showDurationRow) return null;
   return (
-    <div className="mb-1.5 grid gap-1 px-1">
+    <div className="mb-1.5 grid gap-1 px-1 md:mb-3 md:gap-3">
       {showQualityRow ? (
         <PickerRow
           label="Quality"
@@ -518,8 +537,8 @@ function PresetMetaStrip({
   const refMode = preset.referenceMode === "reference_images";
   return (
     <>
-      <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-300">
-        <span className="truncate font-medium text-ink-100">{preset.title}</span>
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px] text-ink-300 md:mb-3 md:gap-x-3 md:gap-y-1 md:text-sm">
+        <span className="truncate font-medium text-ink-100 md:text-base">{preset.title}</span>
         <span aria-hidden className="text-ink-500">·</span>
         <span>{`${dur}s`}</span>
         <span aria-hidden className="text-ink-500">·</span>
@@ -534,7 +553,7 @@ function PresetMetaStrip({
         ) : null}
       </div>
       {refMode ? (
-        <p className="mb-1.5 px-1 text-[10.5px] leading-snug text-ink-300">
+        <p className="mb-1.5 px-1 text-[10.5px] leading-snug text-ink-300 md:mb-3 md:text-sm md:leading-relaxed">
           <span className="font-semibold text-ink-100">Reference mode:</span>{" "}
           your photo is used as a character-consistency reference rather than the
           opening frame.
@@ -558,11 +577,11 @@ function PickerRow<T extends string | number>({
   renderLabel: (v: T) => string;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">
+    <div className="flex items-center gap-2 md:gap-4">
+      <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400 md:w-20 md:text-xs">
         {label}
       </span>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5 md:gap-2">
         {items.map((v) => {
           const active = chosen === v;
           return (
@@ -573,8 +592,8 @@ function PickerRow<T extends string | number>({
               aria-pressed={active}
               className={
                 active
-                  ? "rounded-full bg-accent px-3 py-1 text-[12px] font-semibold text-accent-ink ring-soft"
-                  : "rounded-full bg-ink-800 px-3 py-1 text-[12px] text-ink-100 ring-soft hover:bg-ink-700"
+                  ? "rounded-full bg-accent px-3 py-1 text-[12px] font-semibold text-accent-ink ring-soft md:px-5 md:py-2 md:text-base"
+                  : "rounded-full bg-ink-800 px-3 py-1 text-[12px] text-ink-100 ring-soft hover:bg-ink-700 md:px-5 md:py-2 md:text-base"
               }
             >
               {renderLabel(v)}
@@ -599,7 +618,7 @@ function PresetStrip({
 }) {
   if (loading) {
     return (
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-4 md:gap-3 lg:grid-cols-5 lg:gap-4">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-ink-800 ring-soft" />
         ))}
@@ -615,8 +634,8 @@ function PresetStrip({
     );
   }
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-      {presets.slice(0, 10).map((p) => (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-4 md:gap-3 lg:grid-cols-5 lg:gap-4">
+      {presets.map((p) => (
         <PresetCard key={p.id} preset={p} selected={selectedId === p.id} onSelect={onSelect} />
       ))}
     </div>
