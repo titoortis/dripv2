@@ -114,35 +114,30 @@ export function UploadPad({
   // product surface is visible.
   const interactive = !comingSoon && !disabled;
 
-  return (
-    <div className="w-full">
-      <button
-        type="button"
-        onClick={() => {
-          if (!interactive) return;
-          inputRef.current?.click();
-        }}
-        disabled={!interactive}
-        className={cn(
-          "relative flex h-[160px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 sm:h-[200px] md:h-[280px] md:rounded-3xl lg:h-[340px]",
-          comingSoon
-            ? "border border-dashed border-ink-600 opacity-70"
-            : hasMedia
-              ? "ring-2 ring-accent"
-              : "ring-soft",
-          interactive && "transition hover:bg-ink-700",
-          disabled && !comingSoon && "cursor-not-allowed opacity-70",
-          comingSoon && "cursor-not-allowed",
-          busy && "opacity-80",
-        )}
-        aria-label={
-          comingSoon
-            ? "Optional secondary reference — arrives with character support"
-            : "Upload your photo"
-        }
-        aria-disabled={!interactive}
-      >
-        {label ? (
+  const slotClassName = cn(
+    "relative flex h-[160px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 sm:h-[200px] md:h-[280px] md:rounded-3xl lg:h-[340px]",
+    comingSoon
+      ? "border border-dashed border-ink-600 opacity-70"
+      : hasMedia
+        ? "ring-2 ring-accent"
+        : "ring-soft",
+    interactive && "transition hover:bg-ink-700",
+    disabled && !comingSoon && "cursor-not-allowed opacity-70",
+    busy && "opacity-80",
+  );
+  const slotAriaLabel = comingSoon
+    ? "Optional secondary reference — arrives with character support"
+    : "Upload your photo";
+
+  // `comingSoon` renders as a non-interactive <div> rather than a <button
+  // disabled> so the slot doesn't inherit the browser's disabled-button
+  // "forbidden" cursor. The contract from PR #24 still holds: no file
+  // input, no /api/uploads call, no state mutation, no submit payload —
+  // we just surface the upcoming-capability shape without signalling that
+  // the user is "forbidden" from a real upload that lives one slot over.
+  const SlotContent = (
+    <>
+      {label ? (
           <span
             aria-hidden="true"
             className="absolute left-2 top-2 z-10 rounded-full bg-ink-700/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-200 md:left-3 md:top-3 md:px-2.5 md:py-1 md:text-xs"
@@ -199,7 +194,34 @@ export function UploadPad({
             <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/40 border-t-white" />
           </div>
         ) : null}
-      </button>
+    </>
+  );
+
+  return (
+    <div className="w-full">
+      {comingSoon ? (
+        <div
+          role="img"
+          aria-label={slotAriaLabel}
+          className={slotClassName}
+        >
+          {SlotContent}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            if (!interactive) return;
+            inputRef.current?.click();
+          }}
+          disabled={!interactive}
+          className={slotClassName}
+          aria-label={slotAriaLabel}
+          aria-disabled={!interactive}
+        >
+          {SlotContent}
+        </button>
+      )}
 
       {!comingSoon ? (
         <input
