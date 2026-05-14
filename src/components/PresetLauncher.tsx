@@ -471,7 +471,8 @@ function ComingSoonSlot() {
   return (
     <div>
       <div
-        className="relative flex aspect-[4/3] w-full cursor-not-allowed items-center justify-center overflow-hidden rounded-2xl border border-dashed border-ink-600 bg-ink-800 opacity-70"
+        role="img"
+        className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-ink-600 bg-ink-800 opacity-70"
         aria-label="Optional secondary reference — arrives with character support"
       >
         <span
