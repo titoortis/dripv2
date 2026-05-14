@@ -62,28 +62,31 @@ export function PresetSheet({
         <div className="px-4 pt-2 pb-0.5">
           <div className="mx-auto h-1 w-10 rounded-full bg-ink-600" />
         </div>
-        <div className="flex items-start justify-between gap-3 px-4 pb-2">
+        <div className="flex items-start justify-between gap-3 px-4 pb-2 md:px-6 md:pb-4">
           <div>
-            <h2 id="preset-sheet-title" className="heading-display text-[15px] tracking-tight text-ink-50">
+            <h2
+              id="preset-sheet-title"
+              className="heading-display text-[15px] tracking-tight text-ink-50 md:text-2xl"
+            >
               Seedance 2.0 · Preset library
             </h2>
-            <p className="mt-0.5 text-[11px] text-ink-300">
+            <p className="mt-0.5 text-[11px] text-ink-300 md:mt-1 md:text-sm">
               Each preset ships its own prompt, duration, and quality. Pick one to launch.
             </p>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink-800 text-ink-200 ring-soft hover:bg-ink-700"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-ink-800 text-ink-200 ring-soft hover:bg-ink-700 md:h-10 md:w-10"
           >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-5">
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+        <div className="flex-1 overflow-y-auto px-4 pb-5 md:px-6 md:pb-8">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-4 md:gap-3 lg:grid-cols-5 lg:gap-4">
             {presets.map((p) => (
               <PresetCard key={p.id} preset={p} selected={selectedId === p.id} onSelect={onSelect} />
             ))}

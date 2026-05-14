@@ -75,14 +75,14 @@ export function PresetCard({
     >
       <Thumb preset={preset} />
       {preset.referenceMode === "reference_images" ? <RefModeBadge /> : null}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5 md:p-3.5">
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
-            <div className="heading-display truncate text-[12.5px] leading-tight text-white">
+            <div className="heading-display truncate text-[12.5px] leading-tight text-white md:text-base lg:text-lg">
               {preset.title}
             </div>
             {preset.subtitle ? (
-              <div className="mt-0.5 truncate text-[10.5px] leading-tight text-ink-200">
+              <div className="mt-0.5 truncate text-[10.5px] leading-tight text-ink-200 md:mt-1 md:text-sm">
                 {preset.subtitle}
               </div>
             ) : null}

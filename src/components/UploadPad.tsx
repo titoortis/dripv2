@@ -124,7 +124,7 @@ export function UploadPad({
         }}
         disabled={!interactive}
         className={cn(
-          "relative flex h-[160px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 sm:h-[200px]",
+          "relative flex h-[160px] w-full items-center justify-center overflow-hidden rounded-2xl bg-ink-800 sm:h-[200px] md:h-[280px] md:rounded-3xl lg:h-[340px]",
           comingSoon
             ? "border border-dashed border-ink-600 opacity-70"
             : hasMedia
@@ -145,7 +145,7 @@ export function UploadPad({
         {label ? (
           <span
             aria-hidden="true"
-            className="absolute left-2 top-2 z-10 rounded-full bg-ink-700/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-200"
+            className="absolute left-2 top-2 z-10 rounded-full bg-ink-700/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-200 md:left-3 md:top-3 md:px-2.5 md:py-1 md:text-xs"
           >
             {label}
           </span>
@@ -153,7 +153,7 @@ export function UploadPad({
         {comingSoon ? (
           <span
             aria-hidden="true"
-            className="absolute right-2 top-2 z-10 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-accent"
+            className="absolute right-2 top-2 z-10 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-accent md:right-3 md:top-3 md:px-2.5 md:py-1 md:text-xs"
           >
             Soon
           </span>
@@ -163,20 +163,34 @@ export function UploadPad({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={previewUrl} alt="Your photo" className="h-full w-full object-cover" />
         ) : comingSoon ? (
-          <div className="flex flex-col items-center gap-1 px-3 text-center text-ink-400">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <div className="flex flex-col items-center gap-1 px-3 text-center text-ink-400 md:gap-2">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 md:h-8 md:w-8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm3 5h8m-8 4h8m-8 4h5" />
             </svg>
-            <div className="text-[11px] font-medium text-ink-300">Optional secondary</div>
-            <div className="text-[10px] leading-snug text-ink-500">Pet or style ref</div>
+            <div className="text-[11px] font-medium text-ink-300 md:text-base">Optional secondary</div>
+            <div className="text-[10px] leading-snug text-ink-500 md:text-sm">Pet or style ref</div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1.5 text-ink-300">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
+          <div className="flex flex-col items-center gap-1.5 text-ink-300 md:gap-3">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 md:h-9 md:w-9"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.6}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
             </svg>
-            <div className="text-[12px] font-medium text-ink-200">Tap to upload</div>
-            <div className="text-[10px] text-ink-400">JPEG, PNG, or WebP · up to 12 MB</div>
+            <div className="text-[12px] font-medium text-ink-200 md:text-lg">Tap to upload</div>
+            <div className="text-[10px] text-ink-400 md:text-sm">
+              JPEG, PNG, or WebP · up to 12 MB
+            </div>
           </div>
         )}
 
@@ -201,7 +215,7 @@ export function UploadPad({
         />
       ) : null}
 
-      <div className="mt-1.5 flex items-center justify-between text-[10.5px] leading-snug">
+      <div className="mt-1.5 flex items-center justify-between text-[10.5px] leading-snug md:mt-3 md:text-sm md:leading-relaxed">
         {comingSoon ? (
           <span className="text-ink-500">
             {comingSoonMessage ?? "Arrives with character support."}
