@@ -39,6 +39,12 @@ function CreatePageInner() {
     initialPresets[0]?.id ?? null,
   );
   const [source, setSource] = useState<UploadedSource | null>(null);
+  // PR-A: secondary slot is now interactive. The id is held locally to surface
+  // a real preview + Remove control but is intentionally NOT sent to
+  // `/api/jobs` — `secondarySource.id` does not appear in the submit body,
+  // does not participate in `requestHash`, and does not gate `canGenerate`.
+  // PR-B will thread it through the job row + hash + stage-1 runtime branch.
+  const [secondarySource, setSecondarySource] = useState<UploadedSource | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -223,8 +229,8 @@ function CreatePageInner() {
               References
             </h2>
             <p className="text-[10.5px] leading-snug text-ink-400 md:mt-1 md:text-sm md:leading-relaxed">
-              Primary reference becomes your character. Secondary slot lands with character
-              support — adds style or composition guidance.
+              Primary reference becomes your character. Optional secondary slot accepts a
+              second selfie or an outfit photo.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 md:gap-4">
@@ -240,18 +246,23 @@ function CreatePageInner() {
                   : undefined
               }
             />
-            {/* PR #24: Secondary slot is intentionally non-interactive today.
-                It surfaces the upcoming-capability shape of the product (two
-                clear slots — primary + optional secondary) without collecting
-                a file we'd have no use for. Threading it to `/api/jobs` and
-                the Seedance wire body is character-system work and explicitly
-                deferred. No state, no upload, no API call. */}
+            {/* PR-A: secondary slot is interactive and writes a `SourceImage`
+                row through the existing `/api/uploads` pipeline. The id is
+                held in client state only — it is NOT sent to `/api/jobs`,
+                does not participate in `requestHash`, and does not gate
+                Generate. PR-B threads the id into the job row + hash + the
+                stage-1 reference-sheet runtime branch. */}
             <UploadPad
-              value={null}
-              onChange={() => {}}
+              value={secondarySource}
+              onChange={setSecondarySource}
               label="Optional"
-              comingSoon
-              comingSoonMessage="Pet or style ref · arrives with character support."
+              helperIdle="Second selfie or outfit reference."
+              disabled={marketingMode}
+              disabledMessage={
+                marketingMode
+                  ? "Upload arrives with the next drop."
+                  : undefined
+              }
             />
           </div>
         </section>
