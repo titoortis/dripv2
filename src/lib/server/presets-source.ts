@@ -109,6 +109,26 @@ export type PresetSeed = {
    *  null at runtime the runner skips the transform step entirely. */
   transformPromptTemplate?: string;
 
+  /** Optional reference-sheet composition pipeline (PR-B).
+   *
+   *  When set, the runner first composes a multi-view character reference
+   *  sheet from the user's primary source image + an outfit reference
+   *  image (`GenerationJob.outfitSourceImageId`) via OpenAI Images Edit
+   *  with the `image[]` multi-image upload form, persists the composed
+   *  PNG as a `SourceImage` row, and feeds that URL into the rest of the
+   *  pipeline (pre-transform if also set, then Seedance) in place of the
+   *  primary source image.
+   *
+   *  Presets where this is non-null require the client to send an
+   *  `outfitSourceImageId` on the `/api/jobs` POST — the API returns 400
+   *  `missing_outfit_image` otherwise, and the UI gates Generate on both
+   *  upload slots being populated.
+   *
+   *  Storage column: `Preset.referenceSheetPromptTemplate` (nullable).
+   *  When null at runtime the runner skips the reference-sheet step
+   *  entirely (every preset today). */
+  referenceSheetPromptTemplate?: string;
+
   isActive?: boolean;
   sortOrder: number;
 };

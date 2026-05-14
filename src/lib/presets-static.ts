@@ -84,6 +84,10 @@ export function getStaticPresetSummaries(): PresetSummary[] {
       // PR 34: surface the seed's `referenceMode` so the SSR card grid can
       // render the "Ref mode" badge without waiting for `/api/presets`.
       referenceMode: p.referenceMode === "reference_images" ? "reference_images" : "first_frame",
+      // PR-B: derived boolean. The seed source carries the full template;
+      // we only forward the existence signal to the client, matching the
+      // wire format `/api/presets` returns. False on every preset today.
+      requiresOutfit: p.referenceSheetPromptTemplate !== undefined && p.referenceSheetPromptTemplate !== null,
     };
   });
 }

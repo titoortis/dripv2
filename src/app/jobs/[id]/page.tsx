@@ -302,6 +302,8 @@ function labelFor(status: string) {
       return "Queued";
     case "uploading":
       return "Preparing";
+    case "generating_reference_sheet":
+      return "Building reference sheet";
     case "submitted":
       return "Submitted";
     case "processing":

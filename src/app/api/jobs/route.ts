@@ -34,6 +34,13 @@ const CreateBody = z.object({
   sourceImageId: z.string().min(1),
   resolution: z.enum(["480p", "720p", "1080p"]).optional(),
   durationSec: z.union([z.literal(5), z.literal(10), z.literal(15)]).optional(),
+  // PR-B: optional second `SourceImage` id used as the outfit reference
+  // for presets that opt into the reference-sheet stage via
+  // `referenceSheetPromptTemplate`. Required for those presets (the
+  // server returns 400 `missing_outfit_image` otherwise) and ignored on
+  // every legacy preset (every preset today) so existing clients keep
+  // working untouched.
+  outfitSourceImageId: z.string().min(1).optional(),
 });
 
 // 6 jobs per minute per session, with bursts up to 3.
@@ -85,6 +92,35 @@ export async function POST(req: Request) {
   }
   if (!image) {
     return NextResponse.json({ error: "source image not found" }, { status: 404 });
+  }
+
+  // PR-B: the outfit reference is only meaningful for presets that opt
+  // into the reference-sheet stage. We resolve the id here so the runner
+  // can rely on the FK without a second lookup.
+  //   - Preset requires it & client didn't send one  → 400 missing_outfit_image
+  //   - Preset requires it & id doesn't resolve     → 404 outfit_image_not_found
+  //   - Preset doesn't require it & client sent one → silently dropped,
+  //     not persisted on the row, not in the hash. This keeps the wire
+  //     forward-compatible: a UI that always sends both ids today won't
+  //     create dual-image jobs for legacy presets, and the request hash
+  //     stays byte-stable with pre-PR-B submits for the same logical inputs.
+  const presetRequiresOutfit = preset.referenceSheetPromptTemplate !== null;
+  let outfitImage: { id: string } | null = null;
+  if (presetRequiresOutfit) {
+    if (!parsed.data.outfitSourceImageId) {
+      return NextResponse.json({ error: "missing_outfit_image" }, { status: 400 });
+    }
+    const found = await prisma.sourceImage.findUnique({
+      where: { id: parsed.data.outfitSourceImageId },
+      select: { id: true },
+    });
+    if (!found) {
+      return NextResponse.json(
+        { error: "outfit_image_not_found" },
+        { status: 404 },
+      );
+    }
+    outfitImage = found;
   }
 
   // PR 6 quality resolution + gate. Three checks, in order, every miss is a
@@ -185,6 +221,14 @@ export async function POST(req: Request) {
     generateAudio: preset.generateAudio,
     promptTemplate: preset.promptTemplate,
     referenceMode: presetReferenceMode,
+    // PR-B: only contribute to the hash when the preset actually opted
+    // into the reference-sheet stage. For every legacy preset both fields
+    // are null and `requestHash` omits them from the canonical string, so
+    // the hash stays byte-identical with pre-PR-B submits.
+    outfitSourceImageId: outfitImage?.id ?? null,
+    referenceSheetPromptTemplate: presetRequiresOutfit
+      ? preset.referenceSheetPromptTemplate
+      : null,
   });
 
   // Idempotency: same session + same normalized inputs → return the existing
@@ -213,6 +257,9 @@ export async function POST(req: Request) {
         userId: user.id,
         presetId: preset.id,
         sourceImageId: image.id,
+        // PR-B: persisted only when the preset opts into the reference-
+        // sheet stage. Null otherwise (every legacy preset today).
+        outfitSourceImageId: outfitImage?.id ?? null,
         providerModelId: preset.modelId,
         requestHash: hash,
         status: "queued",

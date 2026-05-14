@@ -10,11 +10,18 @@ import { createHash } from "node:crypto";
  * differently — same image + same preset + different submit pathway is a
  * legitimately different job.
  *
- * Backward stability: when `referenceMode === "first_frame"` (the default),
- * the field is omitted from the canonical string. That keeps every hash
- * computed before this column existed byte-identical to its current value,
- * so existing idempotency keys in production DBs continue to match new
- * computations for the same logical inputs.
+ * `outfitSourceImageId` and `referenceSheetPromptTemplate` participate in
+ * the hash for presets that opt into PR-B's reference-sheet stage. Two
+ * submits with the same primary image but different outfit references
+ * (or a preset whose reference-sheet prompt changes between rows) are
+ * legitimately different jobs.
+ *
+ * Backward stability: each of the three optional fields above is omitted
+ * from the canonical string when null or at its default. Every hash that
+ * was computed before any of these fields existed therefore remains
+ * byte-identical to its current value when recomputed for the same
+ * logical inputs, so existing idempotency keys in production DBs
+ * continue to match new computations.
  */
 export function requestHash(input: {
   presetId: string;
@@ -28,6 +35,16 @@ export function requestHash(input: {
   /** Defaults to `"first_frame"`; omitted from the canonical string at
    *  that default to preserve hash stability for legacy rows. */
   referenceMode?: "first_frame" | "reference_images";
+  /** PR-B: optional second `SourceImage` reference. Omitted from the
+   *  canonical string when null/undefined to preserve byte-stability
+   *  for every job that doesn't use the reference-sheet stage (every
+   *  preset today). */
+  outfitSourceImageId?: string | null;
+  /** PR-B: the preset's reference-sheet prompt template at submit time.
+   *  Participates in the hash so editing the template makes future
+   *  submits produce a new job rather than colliding with the old one.
+   *  Omitted from the canonical string when null/undefined. */
+  referenceSheetPromptTemplate?: string | null;
 }): string {
   const parts = [
     `preset:${input.presetId}`,
@@ -42,6 +59,12 @@ export function requestHash(input: {
   const mode = input.referenceMode ?? "first_frame";
   if (mode !== "first_frame") {
     parts.push(`refmode:${mode}`);
+  }
+  if (input.outfitSourceImageId) {
+    parts.push(`outfit:${input.outfitSourceImageId}`);
+  }
+  if (input.referenceSheetPromptTemplate) {
+    parts.push(`refsheet:${input.referenceSheetPromptTemplate}`);
   }
   return createHash("sha256").update(parts.join("|")).digest("hex");
 }

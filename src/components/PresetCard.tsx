@@ -51,6 +51,13 @@ export type PresetSummary = {
   // Whether the runtime actually used that slot is captured on the job row
   // (`GenerationJob.role`), not here.
   referenceMode: PresetReferenceMode;
+  // PR-B: true when the preset has a non-null
+  // `referenceSheetPromptTemplate` server-side — i.e. the runner will run
+  // its stage-1 reference-sheet composition. The wire format only carries
+  // the boolean (not the full template) because the client only needs to
+  // gate the secondary upload slot + the submit payload on this signal.
+  // False on every preset today.
+  requiresOutfit: boolean;
 };
 
 export function PresetCard({

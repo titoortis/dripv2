@@ -31,6 +31,7 @@ export async function GET() {
       supportedDurations: true,
       generateAudio: true,
       referenceMode: true,
+      referenceSheetPromptTemplate: true,
       sortOrder: true,
     },
   });
@@ -86,6 +87,11 @@ export async function GET() {
       aspectLabel,
       generateAudio: p.generateAudio,
       referenceMode: p.referenceMode === "reference_images" ? "reference_images" : "first_frame",
+      // PR-B: derived boolean. The full template stays server-side; the
+      // client only needs to know whether to gate the secondary slot +
+      // include `outfitSourceImageId` on the submit. False on every
+      // preset today (none have a non-null `referenceSheetPromptTemplate`).
+      requiresOutfit: p.referenceSheetPromptTemplate !== null,
       sortOrder: p.sortOrder,
     };
   });

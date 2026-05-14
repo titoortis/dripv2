@@ -170,15 +170,22 @@ function CreatePageInner() {
   const requiredCredits = chosenCombo?.creditsCost ?? null;
   const outOfCredits =
     balance !== null && requiredCredits !== null && balance < requiredCredits;
+  // PR-B: presets that opt into the reference-sheet stage need both
+  // upload slots populated before the submit body is valid. For every
+  // legacy preset (every preset today) `requiresOutfit` is false and
+  // the gating reduces back to the PR-A primary-only rule.
+  const needsOutfit = Boolean(selected?.requiresOutfit);
   const canGenerate =
     !marketingMode &&
     Boolean(source?.id && selected?.id && chosenCombo) &&
+    (!needsOutfit || Boolean(secondarySource?.id)) &&
     !submitting &&
     !outOfCredits;
 
   async function generate() {
     if (marketingMode) return;
     if (!source || !selected || !chosenCombo) return;
+    if (needsOutfit && !secondarySource) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -190,6 +197,13 @@ function CreatePageInner() {
           sourceImageId: source.id,
           resolution: chosenCombo.resolution,
           durationSec: chosenCombo.durationSec,
+          // PR-B: only send `outfitSourceImageId` when the preset opts
+          // into the reference-sheet stage. For every legacy preset
+          // (every preset today) the field is omitted and the request
+          // body is byte-identical to pre-PR-B submits.
+          ...(needsOutfit && secondarySource
+            ? { outfitSourceImageId: secondarySource.id }
+            : {}),
         }),
       });
       if (res.status === 402) {
@@ -255,8 +269,12 @@ function CreatePageInner() {
             <UploadPad
               value={secondarySource}
               onChange={setSecondarySource}
-              label="Optional"
-              helperIdle="Second selfie or outfit reference."
+              label={needsOutfit ? "Outfit" : "Optional"}
+              helperIdle={
+                needsOutfit
+                  ? "Outfit reference. Required for this preset."
+                  : "Second selfie or outfit reference."
+              }
               disabled={marketingMode}
               disabledMessage={
                 marketingMode
