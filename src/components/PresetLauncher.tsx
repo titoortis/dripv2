@@ -41,6 +41,12 @@ export function PresetLauncher({
 }) {
   const router = useRouter();
   const [primary, setPrimary] = useState<UploadedSource | null>(null);
+  // PR-A: secondary slot is now interactive. The id is held locally so we
+  // can render a real preview + Remove control, but is intentionally NOT
+  // sent to `/api/jobs` — it does not appear in the submit body, does not
+  // participate in `requestHash`, and does not gate `canGenerate`. PR-B
+  // threads it through the job row + hash + stage-1 runtime branch.
+  const [secondary, setSecondary] = useState<UploadedSource | null>(null);
   const [chosenResolution, setChosenResolution] = useState<string | null>(null);
   const [chosenDuration, setChosenDuration] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -50,11 +56,14 @@ export function PresetLauncher({
 
   // Reset state when the preset changes / the overlay is (re)opened. We do
   // this on `open` going true so closing-and-reopening clears any stale
-  // error from the prior attempt.
+  // error from the prior attempt. PR-A: also clear the secondary slot so a
+  // stale file from a prior preset does not visually carry over (the id
+  // would have been orphaned anyway since it never reached `/api/jobs`).
   useEffect(() => {
     if (!open || !preset) return;
     setError(null);
     setSubmitting(false);
+    setSecondary(null);
     if (preset.availableCombos.length === 0) {
       setChosenResolution(null);
       setChosenDuration(null);
@@ -226,6 +235,8 @@ export function PresetLauncher({
               <ReferencesBlock
                 primary={primary}
                 onPrimary={setPrimary}
+                secondary={secondary}
+                onSecondary={setSecondary}
               />
               <SettingsBlock
                 preset={preset}
@@ -310,9 +321,13 @@ function Hero({
 function ReferencesBlock({
   primary,
   onPrimary,
+  secondary,
+  onSecondary,
 }: {
   primary: UploadedSource | null;
   onPrimary: (next: UploadedSource | null) => void;
+  secondary: UploadedSource | null;
+  onSecondary: (next: UploadedSource | null) => void;
 }) {
   return (
     <section className="mb-5">
@@ -325,11 +340,22 @@ function ReferencesBlock({
           value={primary}
           onChange={onPrimary}
         />
-        <ComingSoonSlot />
+        {/* PR-A: secondary slot is interactive. The upload returns a real
+            `SourceImage` row through `/api/uploads`, but its id is NOT sent
+            to `/api/jobs`, does not gate Generate, and does not change the
+            request hash. PR-B will consume the second id in the stage-1
+            reference-sheet runtime branch. */}
+        <RefSlot
+          label="Outfit / 2nd selfie"
+          hint="Optional reference."
+          required={false}
+          value={secondary}
+          onChange={onSecondary}
+        />
       </div>
       <p className="mt-2 text-[11px] text-ink-400">
-        Primary reference becomes your character. Secondary slot arrives with
-        character support.
+        Primary reference becomes your character. Optional secondary slot
+        accepts a second selfie or an outfit photo.
       </p>
     </section>
   );
@@ -459,44 +485,6 @@ function RefSlot({
         ) : (
           <span className="text-ink-400">{required ? "Required" : "Optional"}</span>
         )}
-      </div>
-    </div>
-  );
-}
-
-/** Static coming-soon slot for the secondary reference. Matches the
- *  `comingSoon` treatment on `/create`'s `UploadPad`: visible but
- *  non-interactive, no file input, no state, no API call. */
-function ComingSoonSlot() {
-  return (
-    <div>
-      <div
-        role="img"
-        className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-ink-600 bg-ink-800 opacity-70"
-        aria-label="Optional secondary reference — arrives with character support"
-      >
-        <span
-          aria-hidden="true"
-          className="absolute left-2 top-2 z-10 rounded-full bg-ink-700/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-200"
-        >
-          Optional
-        </span>
-        <span
-          aria-hidden="true"
-          className="absolute right-2 top-2 z-10 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-accent"
-        >
-          Soon
-        </span>
-        <div className="flex flex-col items-center gap-1 px-3 text-center text-ink-400">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm3 5h8m-8 4h8m-8 4h5" />
-          </svg>
-          <div className="text-[11px] font-medium text-ink-300">Style or pet ref</div>
-          <div className="text-[10px] leading-tight text-ink-500">Arrives with character support</div>
-        </div>
-      </div>
-      <div className="mt-1.5 text-[11px] text-ink-500">
-        Optional
       </div>
     </div>
   );
