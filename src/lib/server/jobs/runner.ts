@@ -51,17 +51,13 @@ async function markJobTerminal(opts: {
  *
  * Mode selection:
  *   - Default (and whenever the kill switch is off): `first_frame` —
- *     the image URL we hand to Seedance is sent with role="first_frame",
+ *     the user's uploaded source image is sent with role="first_frame",
  *     i.e. the legacy Seedance image-to-video baseline.
  *   - When `PROVIDER_REFERENCE_MODE_ENABLED` is on AND the preset opts in
- *     via `preset.referenceMode === "reference_images"`, the same URL is
- *     sent with role="reference_image" instead. `referenceMode` is
- *     orthogonal to the pre-transform pipeline: if the preset also sets
- *     `transformPromptTemplate`, the URL we ship to Seedance is the
- *     post-transform PNG, and the chosen `role` is applied to *that*
- *     URL. No provider-side asset upload; the only thing that changes
- *     between the two modes is the `role` label on the image content
- *     entry.
+ *     via `preset.referenceMode === "reference_images"`, the same source
+ *     image URL is sent with role="reference_image". No provider-side
+ *     asset upload; the only thing that changes between the two modes is
+ *     the `role` label on the image content entry.
  */
 export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   const job = await prisma.generationJob.findUnique({
@@ -101,17 +97,10 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   //   restage the user's uploaded photo through OpenAI Images Edit
   //   (model = `env.OPENAI_IMAGE_MODEL`, default `gpt-image-1`) and
   //   persist the edited PNG to our storage. The resulting public URL
-  //   replaces `sourceImage.publicUrl` in the Seedance task body.
-  //
-  //   The `role` label on that URL is independent of pre-transform:
-  //   when the preset also opts in via `referenceMode === "reference_images"`
-  //   AND `PROVIDER_REFERENCE_MODE_ENABLED` is on, the post-transform
-  //   PNG is shipped to Seedance with `role="reference_image"`. Otherwise
-  //   it ships as `role="first_frame"` (the legacy behavior). This is the
-  //   experiment knob for PR-D: we want to see whether handing Seedance
-  //   our already-restaged Ferrari paddock PNG as a reference image
-  //   instead of a first frame reduces the privacy-filter false-positive
-  //   rate on `f1_pilot_v1`.
+  //   replaces `sourceImage.publicUrl` in the Seedance task body. The
+  //   role label is forced to `first_frame` because the edited PNG is
+  //   the desired first frame — Seedance does not need to do its own
+  //   reference-image character lift on top.
   //
   // Reference-sheet pipeline (PR-B):
   //   When the preset opts in via `referenceSheetPromptTemplate` AND the
@@ -128,6 +117,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   );
   const usePreTransform = Boolean(job.preset.transformPromptTemplate);
   const useReferenceImageRole =
+    !usePreTransform &&
     env().PROVIDER_REFERENCE_MODE_ENABLED &&
     job.preset.referenceMode === "reference_images";
   const role: ImageRole = useReferenceImageRole ? "reference_image" : "first_frame";
