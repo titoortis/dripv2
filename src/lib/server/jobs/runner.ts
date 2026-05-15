@@ -97,10 +97,22 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   //   restage the user's uploaded photo through OpenAI Images Edit
   //   (model = `env.OPENAI_IMAGE_MODEL`, default `gpt-image-1`) and
   //   persist the edited PNG to our storage. The resulting public URL
-  //   replaces `sourceImage.publicUrl` in the Seedance task body. The
-  //   role label is forced to `first_frame` because the edited PNG is
-  //   the desired first frame — Seedance does not need to do its own
-  //   reference-image character lift on top.
+  //   replaces `sourceImage.publicUrl` in the Seedance task body.
+  //
+  //   The role label normally stays `first_frame` because the edited PNG
+  //   is the desired first frame and Seedance does not need to do its
+  //   own reference-image character lift on top. However, when the
+  //   preset *also* opts in to `referenceMode === "reference_images"`
+  //   AND the env kill switch `PROVIDER_REFERENCE_MODE_ENABLED` is on,
+  //   the pre-transformed PNG is instead sent with role="reference_image".
+  //   The image bytes are unchanged — only the role label flips. This is
+  //   used to probe whether Seedance's reference_image channel applies a
+  //   different content-safety filter than the first_frame channel
+  //   (e.g. for f1_pilot_v1, where the transformed Ferrari portrait
+  //   has been rejected by `InputImageSensitiveContentDetected.
+  //   PrivacyInformation` on the first_frame path). Reversible: flipping
+  //   the env flag off restores first_frame semantics; no schema or
+  //   submit-body change beyond the role string.
   //
   // Reference-sheet pipeline (PR-B):
   //   When the preset opts in via `referenceSheetPromptTemplate` AND the
@@ -117,7 +129,6 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   );
   const usePreTransform = Boolean(job.preset.transformPromptTemplate);
   const useReferenceImageRole =
-    !usePreTransform &&
     env().PROVIDER_REFERENCE_MODE_ENABLED &&
     job.preset.referenceMode === "reference_images";
   const role: ImageRole = useReferenceImageRole ? "reference_image" : "first_frame";

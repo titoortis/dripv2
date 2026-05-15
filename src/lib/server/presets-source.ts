@@ -429,7 +429,17 @@ export const PRESETS: PresetSeed[] = [
     lockedDurationSec: 5,
     allowedAspectRatios: ["9:16"],
     motionNotes: "broadcast cam, slow dolly, Ferrari paddock",
-    referenceMode: "first_frame",
+    // PR-D: opt this preset into Seedance reference_images mode. With the
+    // env kill switch `PROVIDER_REFERENCE_MODE_ENABLED=true`, the runner
+    // submits the pre-transformed Ferrari PNG to Seedance with
+    // role="reference_image" instead of role="first_frame". The image
+    // bytes are unchanged — only the role label flips. Goal: probe
+    // whether the reference_image channel has a softer content-safety
+    // filter than first_frame, which has been rejecting transformed
+    // portraits as `InputImageSensitiveContentDetected.PrivacyInformation`.
+    // Reversible: flipping the env flag back off restores first_frame
+    // behavior. No other preset uses reference_images today.
+    referenceMode: "reference_images",
     sortOrder: 130,
   },
 ];
