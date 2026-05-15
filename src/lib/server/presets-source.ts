@@ -101,12 +101,9 @@ export type PresetSeed = {
    *  desired "first frame" is a stylized restage of the user's photo
    *  (e.g. `f1_pilot_v1` → Ferrari paddock portrait).
    *
-   *  `referenceMode` is independent of this field: pre-transform decides
-   *  *which* PNG is shipped to Seedance (original upload vs. edited
-   *  restage), while `referenceMode` decides under which `role` it is
-   *  shipped (`first_frame` vs. `reference_image`). Pairing both is
-   *  allowed and is the path used by the PR-D experiment on
-   *  `f1_pilot_v1`.
+   *  When set, `referenceMode` should stay `"first_frame"` — the edited
+   *  image *is* the desired first frame; we are not asking Seedance to
+   *  do its own reference-image character lift on top.
    *
    *  Storage column: `Preset.transformPromptTemplate` (nullable). When
    *  null at runtime the runner skips the transform step entirely. */
@@ -432,12 +429,7 @@ export const PRESETS: PresetSeed[] = [
     lockedDurationSec: 5,
     allowedAspectRatios: ["9:16"],
     motionNotes: "broadcast cam, slow dolly, Ferrari paddock",
-    // PR-D experiment: opt this preset into the `reference_image` role on
-    // the post-transform PNG. Gated by `PROVIDER_REFERENCE_MODE_ENABLED`;
-    // every other preset is unaffected. Goal: lower the rate of Seedance
-    // `InputImageSensitiveContentDetected.PrivacyInformation` rejections
-    // on the Ferrari paddock restage.
-    referenceMode: "reference_images",
+    referenceMode: "first_frame",
     sortOrder: 130,
   },
 ];
