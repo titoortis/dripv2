@@ -155,6 +155,21 @@ model Preset {
   //
   // Null means "submit the source image directly" (legacy path).
   transformPromptTemplate String?
+  // Optional reference-sheet composition pipeline (PR: f1_pilot_v1, etc.).
+  // When non-null, the runner first composes a multi-view character
+  // reference sheet from the user's primary source image plus an outfit
+  // reference image (`GenerationJob.outfitSourceImageId`), persists the
+  // composed PNG as a `SourceImage` row, and feeds that URL into the
+  // existing pre-transform / Seedance pipeline in place of the primary
+  // source image. Submitted with this prompt to OpenAI Images Edit using
+  // the `image[]` multi-image upload form (model =
+  // `env.OPENAI_IMAGE_MODEL`, default `gpt-image-1`).
+  //
+  // Presets where this is non-null also require the client to send an
+  // `outfitSourceImageId` on the `/api/jobs` POST — the API returns 400
+  // `missing_outfit_image` otherwise. Null means "reference-sheet stage
+  // is skipped" (legacy path, every preset today).
+  referenceSheetPromptTemplate String?
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
   ownerUserId    String?
@@ -180,7 +195,14 @@ model SourceImage {
   bytes      Int
   createdAt  DateTime @default(now())
 
-  jobs           GenerationJob[]
+  // PR-B: `SourceImage` now backs two distinct slots on `GenerationJob` —
+  // the primary `sourceImageId` (every job) and the optional
+  // `outfitSourceImageId` (only presets that require an outfit reference).
+  // Prisma requires explicit relation names when two relations connect the
+  // same models. The underlying SQL FK constraints are independent; this
+  // is purely a Prisma-client disambiguation.
+  jobs           GenerationJob[] @relation("JobSourceImage")
+  outfitJobs     GenerationJob[] @relation("JobOutfitImage")
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +237,15 @@ model GenerationJob {
   referralCodeId  String?
   presetId        String
   sourceImageId   String
+  // PR-B: optional second `SourceImage` reference used as the outfit /
+  // 2nd-selfie input for the stage-1 reference-sheet composition. Set
+  // only on submits for presets that opt in via
+  // `Preset.referenceSheetPromptTemplate`. Null on every legacy preset
+  // (every preset today), in which case the runner skips stage 1 and
+  // submits the primary source image through the existing path. Kept
+  // nullable so prod jobs that were created before this column existed
+  // (every prod row today) remain valid.
+  outfitSourceImageId String?
   // PR 6 quality picker. The user's chosen render quality + the credits we
   // actually debited for this submission. Persisted on the row (not derived
   // from the preset baseline) because:
@@ -266,7 +297,8 @@ model GenerationJob {
   updatedAt       DateTime  @updatedAt
 
   preset        Preset         @relation(fields: [presetId], references: [id])
-  sourceImage   SourceImage    @relation(fields: [sourceImageId], references: [id])
+  sourceImage   SourceImage    @relation("JobSourceImage", fields: [sourceImageId], references: [id])
+  outfitSourceImage SourceImage? @relation("JobOutfitImage", fields: [outfitSourceImageId], references: [id])
   resultVideo   ResultVideo?   @relation(fields: [resultVideoId], references: [id])
   user          User?          @relation("JobByUser", fields: [userId], references: [id])
   creator       User?          @relation("JobByCreator", fields: [creatorUserId], references: [id])

@@ -59,6 +59,20 @@ export type EditImageOutput = {
   mime: "image/png";
 };
 
+/**
+ * One reference image (URL + MIME) passed into the multi-image variant of
+ * the OpenAI Images Edit endpoint. The provider expects the multipart
+ * field name `image[]` repeated once per source, with each part carrying
+ * the file bytes. We always fetch the bytes ourselves so the caller can
+ * keep handing us URLs from our own storage.
+ */
+export type ComposeReferenceInput = {
+  sources: Array<{ sourceImageUrl: string; sourceMimeType: string }>;
+  prompt: string;
+  size?: OpenAiImageSize;
+  quality?: OpenAiImageQuality;
+};
+
 export const openAiImage = {
   hasCredentials(): boolean {
     const k = env().OPENAI_API_KEY;
@@ -134,6 +148,119 @@ export const openAiImage = {
       http_status: resp.status,
       elapsed_ms: elapsedMs,
       bytes: pngBuffer.byteLength,
+    });
+    return { pngBuffer, mime: "image/png" };
+  },
+
+  /**
+   * Multi-image variant of `/v1/images/edits`. Used by the PR-B
+   * reference-sheet stage: takes N source images (typically primary
+   * selfie + outfit reference) and composes a single PNG using the
+   * preset's `referenceSheetPromptTemplate`. The provider expects the
+   * multipart field name `image[]` repeated once per source — every
+   * other field is identical to the single-image `editImage` call,
+   * including the response shape (`data[0].b64_json`).
+   *
+   * Errors and observability follow the same taxonomy as `editImage`:
+   *   - missing key             → providerCode `missing_api_key`
+   *   - source download fails   → providerCode `source_download_failed`
+   *   - empty / no b64_json     → providerCode `no_image_data`
+   *   - HTTP 4xx/5xx            → providerCode from response body's
+   *                               `error.code`, else null; the caller
+   *                               (`runner.ts:errorCodeFor`) maps these
+   *                               into the `transform_*` / `transform_http_*`
+   *                               codes the wallet refund policy already
+   *                               recognises, so no new refundable code
+   *                               is introduced.
+   */
+  async composeReferenceSheet(input: ComposeReferenceInput): Promise<EditImageOutput> {
+    const apiKey = env().OPENAI_API_KEY;
+    if (!apiKey || apiKey.trim().length === 0) {
+      throw new OpenAiImageError("OPENAI_API_KEY is not configured.", {
+        httpStatus: 0,
+        providerCode: "missing_api_key",
+      });
+    }
+    if (input.sources.length === 0) {
+      throw new OpenAiImageError("composeReferenceSheet requires at least one source image.", {
+        httpStatus: 0,
+        providerCode: "missing_source",
+      });
+    }
+
+    // Fetch every source's bytes up-front so a download failure aborts
+    // before we open the multipart upload. Same behavior as `editImage`'s
+    // single-image fetch, just N-fold.
+    const fetchedSources = await Promise.all(
+      input.sources.map(async (s) => ({
+        bytes: await fetchImageBytes(s.sourceImageUrl),
+        mime: s.sourceMimeType,
+      })),
+    );
+
+    const form = new FormData();
+    form.set("model", env().OPENAI_IMAGE_MODEL);
+    form.set("prompt", input.prompt);
+    form.set("size", input.size ?? "1024x1536");
+    form.set("quality", input.quality ?? "high");
+    form.set("n", "1");
+    for (let i = 0; i < fetchedSources.length; i += 1) {
+      const { bytes, mime } = fetchedSources[i];
+      const blob = new Blob([new Uint8Array(bytes)], {
+        type: mime || "image/jpeg",
+      });
+      // The OpenAI Images Edit endpoint accepts repeated `image[]` parts
+      // for the multi-image upload form. FormData.append (vs .set) is
+      // required here — `.set` would overwrite each prior entry.
+      form.append("image[]", blob, pickFilename(mime));
+    }
+
+    const url = `${env().OPENAI_BASE_URL.replace(/\/$/, "")}/images/edits`;
+    const t0 = Date.now();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    const elapsedMs = Date.now() - t0;
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      const code = extractProviderCode(text);
+      logEvent("openai_image_compose_error", {
+        http_status: resp.status,
+        provider_code: code,
+        elapsed_ms: elapsedMs,
+        sources: fetchedSources.length,
+      });
+      throw new OpenAiImageError(
+        `OpenAI Images Edit (compose) failed: HTTP ${resp.status} ${truncate(text, 400)}`,
+        { httpStatus: resp.status, providerCode: code },
+      );
+    }
+
+    const json = (await resp.json()) as {
+      data?: Array<{ b64_json?: string }>;
+    };
+    const b64 = json.data?.[0]?.b64_json;
+    if (!b64) {
+      logEvent("openai_image_compose_no_data", {
+        http_status: resp.status,
+        elapsed_ms: elapsedMs,
+        sources: fetchedSources.length,
+      });
+      throw new OpenAiImageError("OpenAI Images Edit (compose) returned no b64_json.", {
+        httpStatus: resp.status,
+        providerCode: "no_image_data",
+      });
+    }
+
+    const pngBuffer = Buffer.from(b64, "base64");
+    logEvent("openai_image_compose_success", {
+      http_status: resp.status,
+      elapsed_ms: elapsedMs,
+      bytes: pngBuffer.byteLength,
+      sources: fetchedSources.length,
     });
     return { pngBuffer, mime: "image/png" };
   },

@@ -62,7 +62,13 @@ async function markJobTerminal(opts: {
 export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   const job = await prisma.generationJob.findUnique({
     where: { id: jobId },
-    include: { preset: true, sourceImage: true },
+    // `outfitSourceImage` is the optional PR-B input — null on every
+    // legacy preset (every preset today), populated only when the
+    // selected preset has `referenceSheetPromptTemplate` set and the
+    // client sent an `outfitSourceImageId` on the submit. Prisma
+    // returns `null` for the optional relation when the FK column is
+    // null, so the rest of the runner can just check the value.
+    include: { preset: true, sourceImage: true, outfitSourceImage: true },
   });
   if (!job) return;
   if (job.providerTaskId) return;
@@ -95,6 +101,20 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
   //   role label is forced to `first_frame` because the edited PNG is
   //   the desired first frame — Seedance does not need to do its own
   //   reference-image character lift on top.
+  //
+  // Reference-sheet pipeline (PR-B):
+  //   When the preset opts in via `referenceSheetPromptTemplate` AND the
+  //   job has an `outfitSourceImageId` (the API already required this at
+  //   submit time), we compose a multi-view character sheet from the
+  //   primary source image + the outfit reference via OpenAI Images Edit
+  //   `image[]` multi-image upload form, persist the composed PNG as a
+  //   new `SourceImage` row, and substitute it for the primary source
+  //   image at the start of the pipeline. The pre-transform step, if
+  //   also enabled, then runs against the reference-sheet PNG instead
+  //   of the user's raw upload. Legacy presets skip this stage entirely.
+  const useReferenceSheet = Boolean(
+    job.preset.referenceSheetPromptTemplate && job.outfitSourceImage,
+  );
   const usePreTransform = Boolean(job.preset.transformPromptTemplate);
   const useReferenceImageRole =
     !usePreTransform &&
@@ -124,15 +144,51 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
     attempts: job.attempts + 1,
     role,
     pre_transform: usePreTransform,
+    reference_sheet: useReferenceSheet,
   });
 
   try {
     let providerImageUrl = job.sourceImage.publicUrl;
+    let providerImageMime = job.sourceImage.mimeType;
+
+    if (useReferenceSheet) {
+      // The outer `useReferenceSheet` guard already proved both of these
+      // are non-null; assert them through with `!` to satisfy TS without
+      // re-narrowing the values.
+      const outfit = job.outfitSourceImage!;
+      await prisma.generationJob.update({
+        where: { id: job.id },
+        data: { status: "generating_reference_sheet" },
+      });
+      logEvent("job_transition", {
+        job_id: job.id,
+        preset_id: job.presetId,
+        from: "uploading",
+        to: "generating_reference_sheet",
+      });
+      const refSheet = await runComposeReferenceSheet({
+        jobId: job.id,
+        sources: [
+          {
+            sourceImageUrl: job.sourceImage.publicUrl,
+            sourceMimeType: job.sourceImage.mimeType,
+          },
+          {
+            sourceImageUrl: outfit.publicUrl,
+            sourceMimeType: outfit.mimeType,
+          },
+        ],
+        prompt: job.preset.referenceSheetPromptTemplate!,
+      });
+      providerImageUrl = refSheet.publicUrl;
+      providerImageMime = refSheet.mimeType;
+    }
+
     if (usePreTransform) {
       providerImageUrl = await runPreTransform({
         jobId: job.id,
-        sourceImageUrl: job.sourceImage.publicUrl,
-        sourceMimeType: job.sourceImage.mimeType,
+        sourceImageUrl: providerImageUrl,
+        sourceMimeType: providerImageMime,
         prompt: job.preset.transformPromptTemplate!,
       });
     }
@@ -142,6 +198,7 @@ export async function submitJob({ jobId }: StartJobInput): Promise<void> {
       role,
       preset_id: job.presetId,
       pre_transform: usePreTransform,
+      reference_sheet: useReferenceSheet,
       image_url: providerImageUrl,
     });
     const { providerTaskId } = await seedance.createImageToVideoTask({
@@ -423,4 +480,72 @@ async function runPreTransform(args: {
     elapsed_ms: Date.now() - t0,
   });
   return stored.publicUrl;
+}
+
+/**
+ * PR-B stage-1: compose a multi-view character reference sheet from the
+ * primary source image + an outfit reference via OpenAI Images Edit's
+ * `image[]` multi-image upload form. Persists the composed PNG as a new
+ * `SourceImage` row (so the operator history stays inspectable) and
+ * returns just the public URL + MIME so the caller can keep feeding it
+ * through the rest of the pipeline.
+ *
+ * Errors are surfaced as `OpenAiImageError` exactly the way
+ * `runPreTransform` does, so `errorCodeFor` maps them into the same
+ * `transform_*` / `transform_http_*` code prefixes the wallet already
+ * understands — no new refundable code is introduced by PR-B.
+ *
+ * The new `SourceImage` row is intentionally NOT linked to the
+ * `GenerationJob` (PR-B does not add a `refSheetImageId` column). It is
+ * a transient pipeline artefact whose lifetime mirrors the job's; we
+ * keep it in `SourceImage` so the bytes have a queryable home and so
+ * that `storage()` adapters that key off the table see the row, but the
+ * job-row stays narrow to what PR-B's scope allowed.
+ */
+async function runComposeReferenceSheet(args: {
+  jobId: string;
+  sources: Array<{ sourceImageUrl: string; sourceMimeType: string }>;
+  prompt: string;
+}): Promise<{ publicUrl: string; mimeType: string }> {
+  if (!openAiImage.hasCredentials()) {
+    throw new OpenAiImageError("OPENAI_API_KEY is not configured.", {
+      httpStatus: 0,
+      providerCode: "missing_api_key",
+    });
+  }
+  logEvent("job_compose_reference_sheet_start", {
+    job_id: args.jobId,
+    model: env().OPENAI_IMAGE_MODEL,
+    sources: args.sources.length,
+  });
+  const t0 = Date.now();
+  const composed = await openAiImage.composeReferenceSheet({
+    sources: args.sources,
+    prompt: args.prompt,
+    size: "1024x1536",
+    quality: "high",
+  });
+  const key = `reference-sheets/${args.jobId}/${randomUUID()}.png`;
+  const stored = await storage().put({
+    key,
+    body: composed.pngBuffer,
+    contentType: composed.mime,
+  });
+  const row = await prisma.sourceImage.create({
+    data: {
+      storageKey: stored.storageKey,
+      publicUrl: stored.publicUrl,
+      mimeType: composed.mime,
+      bytes: stored.bytes,
+    },
+  });
+  logEvent("job_compose_reference_sheet_success", {
+    job_id: args.jobId,
+    source_image_id: row.id,
+    storage_key: stored.storageKey,
+    public_url: stored.publicUrl,
+    bytes: stored.bytes,
+    elapsed_ms: Date.now() - t0,
+  });
+  return { publicUrl: stored.publicUrl, mimeType: composed.mime };
 }

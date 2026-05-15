@@ -2,6 +2,14 @@
 //
 //   queued
 //     └─► uploading              (source image saved to our storage)
+//           └─► generating_reference_sheet  (PR-B; only when the preset
+//           │    opts in via `referenceSheetPromptTemplate` AND the job
+//           │    has an `outfitSourceImageId`. Stage-1 reference-sheet
+//           │    composition via OpenAI Images Edit `image[]`. The
+//           │    composed PNG is persisted as a new `SourceImage` row
+//           │    and used as the input to the rest of the pipeline in
+//           │    place of the primary source image. Legacy presets
+//           │    skip this state entirely.)
 //           └─► submitted        (provider task created; provider_task_id stored)
 //                 └─► processing (provider reports running)
 //                       ├─► completed  (mp4 copied to our storage)
@@ -12,6 +20,7 @@
 export type JobStatus =
   | "queued"
   | "uploading"
+  | "generating_reference_sheet"
   | "submitted"
   | "processing"
   | "completed"

@@ -158,11 +158,19 @@ export function PresetLauncher({
   const requiredCredits = chosenCombo?.creditsCost ?? null;
   const outOfCredits =
     balance !== null && requiredCredits !== null && balance < requiredCredits;
+  // PR-B: presets that opt into the reference-sheet stage need both
+  // slots populated. For every legacy preset (every preset today)
+  // `requiresOutfit` is false and the gating reduces to PR-A.
+  const needsOutfit = Boolean(preset?.requiresOutfit);
   const canGenerate =
-    Boolean(primary?.id && preset?.id && chosenCombo) && !submitting && !outOfCredits;
+    Boolean(primary?.id && preset?.id && chosenCombo) &&
+    (!needsOutfit || Boolean(secondary?.id)) &&
+    !submitting &&
+    !outOfCredits;
 
   async function generate() {
     if (!preset || !primary || !chosenCombo) return;
+    if (needsOutfit && !secondary) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -174,6 +182,12 @@ export function PresetLauncher({
           sourceImageId: primary.id,
           resolution: chosenCombo.resolution,
           durationSec: chosenCombo.durationSec,
+          // PR-B: only forward `outfitSourceImageId` when the preset
+          // opts into the reference-sheet stage. Omitted otherwise so
+          // the submit body stays byte-identical with pre-PR-B requests.
+          ...(needsOutfit && secondary
+            ? { outfitSourceImageId: secondary.id }
+            : {}),
         }),
       });
       if (res.status === 402) {
@@ -237,6 +251,7 @@ export function PresetLauncher({
                 onPrimary={setPrimary}
                 secondary={secondary}
                 onSecondary={setSecondary}
+                requiresOutfit={needsOutfit}
               />
               <SettingsBlock
                 preset={preset}
@@ -323,11 +338,17 @@ function ReferencesBlock({
   onPrimary,
   secondary,
   onSecondary,
+  requiresOutfit,
 }: {
   primary: UploadedSource | null;
   onPrimary: (next: UploadedSource | null) => void;
   secondary: UploadedSource | null;
   onSecondary: (next: UploadedSource | null) => void;
+  // PR-B: when the selected preset opts into the reference-sheet stage,
+  // the secondary slot is no longer optional — Generate is gated on it
+  // and the submit body forwards the id as `outfitSourceImageId`. This
+  // flag rebrands the slot copy + RefSlot's `required` semantics.
+  requiresOutfit: boolean;
 }) {
   return (
     <section className="mb-5">
@@ -343,19 +364,27 @@ function ReferencesBlock({
         {/* PR-A: secondary slot is interactive. The upload returns a real
             `SourceImage` row through `/api/uploads`, but its id is NOT sent
             to `/api/jobs`, does not gate Generate, and does not change the
-            request hash. PR-B will consume the second id in the stage-1
-            reference-sheet runtime branch. */}
+            request hash. PR-B: when the preset opts into the reference-
+            sheet stage (`requiresOutfit`), this slot becomes the outfit
+            reference, the id IS sent on `/api/jobs` as
+            `outfitSourceImageId`, gates Generate, and participates in
+            the request hash. Otherwise the slot stays in PR-A behaviour. */}
         <RefSlot
-          label="Outfit / 2nd selfie"
-          hint="Optional reference."
-          required={false}
+          label={requiresOutfit ? "Outfit" : "Outfit / 2nd selfie"}
+          hint={
+            requiresOutfit
+              ? "Outfit reference. Required for this preset."
+              : "Optional reference."
+          }
+          required={requiresOutfit}
           value={secondary}
           onChange={onSecondary}
         />
       </div>
       <p className="mt-2 text-[11px] text-ink-400">
-        Primary reference becomes your character. Optional secondary slot
-        accepts a second selfie or an outfit photo.
+        {requiresOutfit
+          ? "Primary reference becomes your character. The outfit slot composes a multi-view reference sheet before generation."
+          : "Primary reference becomes your character. Optional secondary slot accepts a second selfie or an outfit photo."}
       </p>
     </section>
   );
